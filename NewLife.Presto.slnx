@@ -1,0 +1,10 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="NewLife.Presto/NewLife.Presto.csproj" />
+  <Project Path="Test/Test.csproj" />
+  <Project Path="UnitTest/UnitTest.csproj" />
+</Solution>
