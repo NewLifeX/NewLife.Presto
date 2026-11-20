@@ -26,3 +26,6 @@ bld/
 
 # BenchmarkDotNet 运行产物（报告与日志，不入库）
 /BenchmarkDotNet.Artifacts/
+
+# 测试与覆盖率产物
+/TestResults/
