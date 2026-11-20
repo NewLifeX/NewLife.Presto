@@ -1,0 +1,41 @@
+{
+  "comment": "跨语言术语表。翻译时优先使用这里的译法；brands 中的词保持原样。",
+  "brands": [
+    "NewLife",
+    "NewLife.Presto",
+    "Presto",
+    "PrestoDB",
+    "Trino",
+    "XCode",
+    "ADO.NET",
+    "HTTP",
+    "REST",
+    "SQL",
+    "JSON",
+    "TLS",
+    "SSL",
+    "NativeAOT",
+    "OpenTelemetry",
+    "JWT",
+    "Bearer",
+    "Guid",
+    "Catalog",
+    "Schema",
+    "CommandType.Text",
+    "AccessToken",
+    "AllowInsertIdentity"
+  ],
+  "terms": [
+    { "source": "connection string", "zh-Hans": "连接字符串", "zh-Hant": "連接字串" },
+    { "source": "connection timeout", "zh-Hans": "连接超时", "zh-Hant": "連線逾時" },
+    { "source": "command timeout", "zh-Hans": "命令超时", "zh-Hant": "命令逾時" },
+    { "source": "retry", "zh-Hans": "重试", "zh-Hant": "重試" },
+    { "source": "custom header", "zh-Hans": "自定义请求头", "zh-Hant": "自訂請求標頭" },
+    { "source": "session property", "zh-Hans": "会话属性", "zh-Hant": "工作階段屬性" },
+    { "source": "statement", "zh-Hans": "语句", "zh-Hant": "語句" },
+    { "source": "query", "zh-Hans": "查询", "zh-Hant": "查詢" },
+    { "source": "transaction", "zh-Hans": "事务", "zh-Hant": "交易" },
+    { "source": "auto-increment", "zh-Hans": "自增", "zh-Hant": "自增" },
+    { "source": "fallback", "zh-Hans": "回退", "zh-Hant": "退回" }
+  ]
+}
