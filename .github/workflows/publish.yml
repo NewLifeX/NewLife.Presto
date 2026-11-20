@@ -5,14 +5,21 @@ on:
     tags: [ v* ]
   workflow_dispatch:
 
+# 必须同时声明：缺 packages: write 会让 GitHub Packages 推送 403，缺 contents: write 无法创建 Release
 permissions:
   contents: write
   packages: write
   id-token: write
 
+# 同一 tag / 手工触发的发布串行执行，避免重复发包
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build-publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     steps:
     - uses: actions/checkout@v7
@@ -20,17 +27,14 @@ jobs:
       uses: actions/setup-dotnet@v6
       with:
         dotnet-version: |
+          6.x
+          8.x
           10.x
           11.x
     - name: Get Version
       run: echo "VERSION=$(date '+%Y.%m%d')" >> $GITHUB_ENV
-    - name: README checks
-      shell: pwsh
-      run: |
-        pwsh -NoProfile -File ./tools/sync-readme-languages.ps1 -Check
-        pwsh -NoProfile -File ./tools/sync-readme-package.ps1 -Check
-    - name: Localization gate
-      # 与 test.yml 的 localization 作业保持一致，避免发出去的包词表/元数据已坏
+    # 首版发布前允许引用 NewLife.Core 预发布版本；正式发版前先等上游发布稳定版，再更新依赖并发版
+    - name: README and localization gate
       shell: pwsh
       run: |
         pwsh -NoProfile -File ./tools/check-locales.ps1 -RequireTranslated
@@ -38,15 +42,45 @@ jobs:
         pwsh -NoProfile -File ./tools/check-english-exceptions.ps1
         pwsh -NoProfile -File ./tools/check-assembly-metadata.ps1
         pwsh -NoProfile -File ./tools/check-config-metadata.ps1
+        pwsh -NoProfile -File ./tools/sync-readme-languages.ps1 -Check
         pwsh -NoProfile -File ./tools/check-readme-coverage.ps1 -RequireFull
+        pwsh -NoProfile -File ./tools/sync-readme-package.ps1 -Check
     - name: Build
+      id: build
+      run: dotnet build NewLife.Presto.slnx -c Release --nologo
+    - name: Unit tests and coverage
+      id: test
+      run: |
+        dotnet test UnitTest/UnitTest.csproj -c Release --no-build \
+          --collect:"XPlat Code Coverage" \
+          --settings coverlet.runsettings \
+          --results-directory TestResults \
+          --logger "trx;LogFileName=unittest.trx"
+        pwsh -NoProfile -File ./tools/check-coverage.ps1 -LineThreshold 100 -BranchThreshold 95
+    - name: Console smoke
+      run: dotnet run --project Test/Test.csproj -c Release --no-build
+    - name: AOT smoke (JIT baseline)
+      run: dotnet run --project AotSmoke/AotSmoke.csproj -c Release --no-build -- --no-db
+    - name: Pack
+      id: pack
       env:
         LANG: en_US.UTF-8
         LC_ALL: en_US.UTF-8
-      run: |
-        dotnet pack --version-suffix ${{ env.VERSION }} -c Release -o out NewLife.Presto/NewLife.Presto.csproj
+      run: dotnet pack --version-suffix ${VERSION} -c Release -o out NewLife.Presto/NewLife.Presto.csproj
+    - name: Package consumer smoke
+      id: consumer
+      shell: pwsh
+      run: pwsh -NoProfile -File ./tools/check-package-consumer.ps1 -PackageDir ./out
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: publish-test-results
+        path: TestResults/**
+        if-no-files-found: ignore
     - name: Publish to GitHub Packages
       id: ghpackages
+      # 备用镜像渠道，失败只告警，不阻断 NuGet.org 正式发布
       continue-on-error: true
       run: |
         dotnet nuget push ./out/*.nupkg --skip-duplicate --source https://nuget.pkg.github.com/NewLifeX/index.json --api-key ${{ github.token }}
@@ -61,6 +95,8 @@ jobs:
       run: |
         dotnet nuget push ./out/*.nupkg --skip-duplicate --source https://api.nuget.org/v3/index.json --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY || secrets.nugetKey }}
     - name: Create GitHub Release
+      id: release
+      # 仅 tag 推送时创建；手工触发（master 无 tag）只发包
       if: startsWith(github.ref, 'refs/tags/')
       continue-on-error: true
       shell: pwsh
@@ -69,8 +105,14 @@ jobs:
       run: |
         $tag = $env:GITHUB_REF_NAME
         $repo = $env:GITHUB_REPOSITORY
+
+        # 幂等：同 tag 已有 Release 就直接跳过，失败重跑不会报错
         gh release view $tag --repo $repo *> $null
-        if ($LASTEXITCODE -eq 0) { Write-Host "Release $tag 已存在，跳过"; exit 0 }
+        if ($LASTEXITCODE -eq 0) {
+          Write-Host "Release $tag 已存在，跳过"
+          exit 0
+        }
+
         $assets = @(Get-ChildItem -LiteralPath 'out' -File | Where-Object { $_.Extension -in '.nupkg', '.snupkg' } | ForEach-Object { $_.FullName })
         gh release create $tag --repo $repo --title $tag --verify-tag --generate-notes @assets
         if ($LASTEXITCODE -ne 0) { throw "gh release create 失败，退出码 $LASTEXITCODE" }
@@ -79,10 +121,21 @@ jobs:
       shell: pwsh
       run: |
         $rows = [ordered]@{
+          '构建'            = '${{ steps.build.outcome }}'
+          '单元测试与覆盖率' = '${{ steps.test.outcome }}'
+          '打包'            = '${{ steps.pack.outcome }}'
+          '包消费冒烟'      = '${{ steps.consumer.outcome }}'
           'GitHub Packages' = '${{ steps.ghpackages.outcome }}'
           'NuGet.org'       = '${{ steps.nuget.outcome }}'
+          'GitHub Release'  = '${{ steps.release.outcome }}'
         }
         $marks = @{ success = '✅'; failure = '⚠️'; skipped = '⏭'; cancelled = '⛔' }
         $lines = @('### 发布结果', '', '| 渠道 | 结果 |', '| --- | --- |')
-        foreach ($k in $rows.Keys) { $lines += "| $k | $($marks[$rows[$k]]) $($rows[$k]) |" }
+        foreach ($k in $rows.Keys) {
+          $o = $rows[$k]
+          if (!$o) { $o = 'skipped' }
+          $lines += "| $k | $($marks[$o]) $o |"
+        }
+        $lines += ''
+        $lines += '> GitHub Release 仅 tag 推送时创建；手工触发只发包。'
         $lines | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append

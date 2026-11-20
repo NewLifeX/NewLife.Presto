@@ -1,0 +1,126 @@
+name: publish-beta
+
+on:
+  push:
+    branches: [ master, dev ]
+    paths:
+      - 'NewLife.Presto/**'
+      - 'UnitTest/**'
+      - 'Test/**'
+      - 'AotSmoke/**'
+      - 'tools/**'
+      - 'coverlet.runsettings'
+      - 'Directory.Packages.props'
+      - 'NewLife.Presto.slnx'
+      - '.github/workflows/publish-beta.yml'
+  workflow_dispatch:
+
+# 测试版只读取仓库、推送包；不创建 Release
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+# 同一分支的 beta 发布串行执行；不取消进行中的发布，避免半个包已推到 NuGet
+concurrency:
+  group: publish-beta-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+    - uses: actions/checkout@v7
+    - name: Setup dotNET
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: |
+          6.x
+          8.x
+          10.x
+          11.x
+    - name: Get Version
+      run: echo "VERSION=$(date '+%Y.%m%d-beta%H%M')" >> $GITHUB_ENV
+    - name: README and localization gate
+      shell: pwsh
+      run: |
+        pwsh -NoProfile -File ./tools/check-locales.ps1 -RequireTranslated
+        pwsh -NoProfile -File ./tools/report-locales.ps1 -RequireTranslated
+        pwsh -NoProfile -File ./tools/check-english-exceptions.ps1
+        pwsh -NoProfile -File ./tools/check-assembly-metadata.ps1
+        pwsh -NoProfile -File ./tools/check-config-metadata.ps1
+        pwsh -NoProfile -File ./tools/sync-readme-languages.ps1 -Check
+        pwsh -NoProfile -File ./tools/check-readme-coverage.ps1 -RequireFull
+        pwsh -NoProfile -File ./tools/sync-readme-package.ps1 -Check
+    - name: Build
+      id: build
+      run: dotnet build NewLife.Presto.slnx -c Release --nologo
+    - name: Unit tests and coverage
+      id: test
+      run: |
+        dotnet test UnitTest/UnitTest.csproj -c Release --no-build \
+          --collect:"XPlat Code Coverage" \
+          --settings coverlet.runsettings \
+          --results-directory TestResults \
+          --logger "trx;LogFileName=unittest.trx"
+        pwsh -NoProfile -File ./tools/check-coverage.ps1 -LineThreshold 100 -BranchThreshold 95
+    - name: Console smoke
+      run: dotnet run --project Test/Test.csproj -c Release --no-build
+    - name: AOT smoke (JIT baseline)
+      run: dotnet run --project AotSmoke/AotSmoke.csproj -c Release --no-build -- --no-db
+    - name: Pack beta
+      id: pack
+      env:
+        LANG: en_US.UTF-8
+        LC_ALL: en_US.UTF-8
+      run: dotnet pack --version-suffix ${VERSION} -c Release -o out NewLife.Presto/NewLife.Presto.csproj
+    - name: Package consumer smoke
+      id: consumer
+      shell: pwsh
+      run: pwsh -NoProfile -File ./tools/check-package-consumer.ps1 -PackageDir ./out
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: publish-beta-test-results
+        path: TestResults/**
+        if-no-files-found: ignore
+    - name: Publish to GitHub Packages
+      id: ghpackages
+      continue-on-error: true
+      run: |
+        dotnet nuget push ./out/*.nupkg --skip-duplicate --source https://nuget.pkg.github.com/NewLifeX/index.json --api-key ${{ github.token }}
+    - name: NuGet login (OIDC)
+      id: nuget-login
+      continue-on-error: true
+      uses: NuGet/login@v1
+      with:
+        user: BigStone
+    - name: Publish to NuGet.org
+      id: nuget
+      run: |
+        dotnet nuget push ./out/*.nupkg --skip-duplicate --source https://api.nuget.org/v3/index.json --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY || secrets.nugetKey }}
+    - name: Publish Summary
+      if: always()
+      shell: pwsh
+      run: |
+        $rows = [ordered]@{
+          '构建'            = '${{ steps.build.outcome }}'
+          '单元测试与覆盖率' = '${{ steps.test.outcome }}'
+          '打包'            = '${{ steps.pack.outcome }}'
+          '包消费冒烟'      = '${{ steps.consumer.outcome }}'
+          'GitHub Packages' = '${{ steps.ghpackages.outcome }}'
+          'NuGet.org'       = '${{ steps.nuget.outcome }}'
+        }
+        $marks = @{ success = '✅'; failure = '⚠️'; skipped = '⏭'; cancelled = '⛔' }
+        $lines = @('### 测试版发布结果', '', '| 渠道 | 结果 |', '| --- | --- |')
+        foreach ($k in $rows.Keys) {
+          $o = $rows[$k]
+          if (!$o) { $o = 'skipped' }
+          $lines += "| $k | $($marks[$o]) $o |"
+        }
+        $lines += ''
+        $lines += '> 测试版只推送 NuGet 包，不创建 GitHub Release。'
+        $lines | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
