@@ -1,0 +1,8 @@
+{
+  "updated": "2026-11-20",
+  "repository": "https://github.com/NewLifeX/NewLife.Presto",
+  "branch": "master",
+  "items": [
+    { "source": "README.md", "output": "README.nuget.md" }
+  ]
+}
