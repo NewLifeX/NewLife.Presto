@@ -4,6 +4,7 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
+  <Project Path="AotSmoke/AotSmoke.csproj" />
   <Project Path="NewLife.Presto/NewLife.Presto.csproj" />
   <Project Path="Test/Test.csproj" />
   <Project Path="UnitTest/UnitTest.csproj" />

@@ -1,0 +1,145 @@
+name: test
+
+on:
+  push:
+    branches: [ master, dev ]
+    paths:
+      - 'NewLife.Presto/**'
+      - 'UnitTest/**'
+      - 'Test/**'
+      - 'AotSmoke/**'
+      - 'Doc/**'
+      - 'tools/**'
+      - 'README*.md'
+      - 'readme-*.json'
+      - 'Directory.Packages.props'
+      - 'NewLife.Presto.slnx'
+      - '.github/workflows/test.yml'
+  pull_request:
+    paths:
+      - 'NewLife.Presto/**'
+      - 'UnitTest/**'
+      - 'Test/**'
+      - 'AotSmoke/**'
+      - 'Doc/**'
+      - 'tools/**'
+      - 'README*.md'
+      - 'readme-*.json'
+      - 'Directory.Packages.props'
+      - 'NewLife.Presto.slnx'
+      - '.github/workflows/test.yml'
+  workflow_dispatch:
+
+jobs:
+  # 构建与单元测试矩阵：每个 RID 用原生 runner 运行；win-x64 / linux-x64 / linux-arm64 为必选平台。
+  build-test:
+    name: 构建与单元测试（${{ matrix.rid }}）
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: win-x64
+            os: windows-latest
+            kind: windows
+          - rid: linux-x64
+            os: ubuntu-latest
+            kind: linux
+          - rid: linux-arm64
+            os: ubuntu-24.04-arm
+            kind: linux
+
+    steps:
+    - uses: actions/checkout@v7
+    - name: Setup dotNET
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: |
+          6.x
+          8.x
+          10.x
+          11.x
+    - name: Build all target frameworks
+      run: dotnet build NewLife.Presto.slnx -c Release --nologo
+    - name: Unit tests
+      run: dotnet test UnitTest/UnitTest.csproj -c Release --no-build --logger "trx;LogFileName=unittest.trx" --results-directory TestResults
+    - name: Console smoke
+      run: dotnet run --project Test/Test.csproj -c Release --no-build
+    - name: AOT smoke (JIT baseline)
+      run: dotnet run --project AotSmoke/AotSmoke.csproj -c Release -- --no-db
+    - name: 上传测试结果
+      # 失败时留 trx 与输出，便于定位是哪些用例在特定平台红
+      if: failure()
+      uses: actions/upload-artifact@v7
+      with:
+        name: test-results-${{ matrix.rid }}
+        path: TestResults/**
+        if-no-files-found: ignore
+
+  # musl（alpine）容器：验证 glibc 之外的 Linux 发行版；容器内 setup-dotnet 不可用，改用 dotnet-install.sh。
+  # 观察期平台：只在夜间定时与手动触发时跑。
+  build-test-musl:
+    name: 构建与单元测试（${{ matrix.rid }} / musl）
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    continue-on-error: true
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: linux-musl-x64
+            platform: linux/amd64
+          - rid: linux-musl-arm64
+            platform: linux/arm64
+
+    steps:
+    - uses: actions/checkout@v7
+    - name: Alpine 容器内构建与测试
+      run: |
+        docker run --rm --platform ${{ matrix.platform }} -v "$PWD:/src" -w /src alpine:3.20 sh -c '
+          set -e
+          apk add --no-cache bash curl icu-libs clang build-base zlib-dev >/dev/null
+          curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
+          bash /tmp/dotnet-install.sh --channel 11.0 --install-dir /usr/share/dotnet >/dev/null
+          ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet
+          export DOTNET_CLI_TELEMETRY_OPTOUT=1
+          # musl 下只验证 net10 目标；net45/net461 依赖 Windows 参考程序集，不在 musl 验证范围
+          dotnet build NewLife.Presto/NewLife.Presto.csproj -c Release -p:TargetFrameworks=net10.0
+          dotnet test UnitTest/UnitTest.csproj -c Release -p:TargetFrameworks=net10.0
+          dotnet run -c Release --project AotSmoke/AotSmoke.csproj --property:TargetFrameworks=net10.0 -- --no-db
+        '
+
+  # 本地化与 README 门禁：词表 33 种语言、英文源文、元数据、README 结构、语言切换行与包版
+  localization:
+    name: 本地化与 README 门禁
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+    - uses: actions/checkout@v7
+    - name: Check locales
+      shell: pwsh
+      run: pwsh -NoProfile -File ./tools/check-locales.ps1 -RequireTranslated
+    - name: Check translation coverage
+      shell: pwsh
+      run: pwsh -NoProfile -File ./tools/report-locales.ps1 -RequireTranslated
+    - name: Check English messages
+      shell: pwsh
+      run: pwsh -NoProfile -File ./tools/check-english-exceptions.ps1
+    - name: Check assembly metadata
+      shell: pwsh
+      run: pwsh -NoProfile -File ./tools/check-assembly-metadata.ps1
+    - name: Check config metadata
+      shell: pwsh
+      run: pwsh -NoProfile -File ./tools/check-config-metadata.ps1
+    - name: Check README coverage
+      shell: pwsh
+      run: pwsh -NoProfile -File ./tools/check-readme-coverage.ps1 -RequireFull
+    - name: Check README language switcher
+      shell: pwsh
+      run: pwsh -NoProfile -File ./tools/sync-readme-languages.ps1 -Check
+    - name: Check README package edition
+      shell: pwsh
+      run: pwsh -NoProfile -File ./tools/sync-readme-package.ps1 -Check

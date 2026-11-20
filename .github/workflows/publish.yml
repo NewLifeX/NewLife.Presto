@@ -1,0 +1,88 @@
+name: publish
+
+on:
+  push:
+    tags: [ v* ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
+jobs:
+  build-publish:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v7
+    - name: Setup dotNET
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: |
+          10.x
+          11.x
+    - name: Get Version
+      run: echo "VERSION=$(date '+%Y.%m%d')" >> $GITHUB_ENV
+    - name: README checks
+      shell: pwsh
+      run: |
+        pwsh -NoProfile -File ./tools/sync-readme-languages.ps1 -Check
+        pwsh -NoProfile -File ./tools/sync-readme-package.ps1 -Check
+    - name: Localization gate
+      # 与 test.yml 的 localization 作业保持一致，避免发出去的包词表/元数据已坏
+      shell: pwsh
+      run: |
+        pwsh -NoProfile -File ./tools/check-locales.ps1 -RequireTranslated
+        pwsh -NoProfile -File ./tools/report-locales.ps1 -RequireTranslated
+        pwsh -NoProfile -File ./tools/check-english-exceptions.ps1
+        pwsh -NoProfile -File ./tools/check-assembly-metadata.ps1
+        pwsh -NoProfile -File ./tools/check-config-metadata.ps1
+        pwsh -NoProfile -File ./tools/check-readme-coverage.ps1 -RequireFull
+    - name: Build
+      env:
+        LANG: en_US.UTF-8
+        LC_ALL: en_US.UTF-8
+      run: |
+        dotnet pack --version-suffix ${{ env.VERSION }} -c Release -o out NewLife.Presto/NewLife.Presto.csproj
+    - name: Publish to GitHub Packages
+      id: ghpackages
+      continue-on-error: true
+      run: |
+        dotnet nuget push ./out/*.nupkg --skip-duplicate --source https://nuget.pkg.github.com/NewLifeX/index.json --api-key ${{ github.token }}
+    - name: NuGet login (OIDC)
+      id: nuget-login
+      continue-on-error: true
+      uses: NuGet/login@v1
+      with:
+        user: BigStone
+    - name: Publish to NuGet.org
+      id: nuget
+      run: |
+        dotnet nuget push ./out/*.nupkg --skip-duplicate --source https://api.nuget.org/v3/index.json --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY || secrets.nugetKey }}
+    - name: Create GitHub Release
+      if: startsWith(github.ref, 'refs/tags/')
+      continue-on-error: true
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        $tag = $env:GITHUB_REF_NAME
+        $repo = $env:GITHUB_REPOSITORY
+        gh release view $tag --repo $repo *> $null
+        if ($LASTEXITCODE -eq 0) { Write-Host "Release $tag 已存在，跳过"; exit 0 }
+        $assets = @(Get-ChildItem -LiteralPath 'out' -File | Where-Object { $_.Extension -in '.nupkg', '.snupkg' } | ForEach-Object { $_.FullName })
+        gh release create $tag --repo $repo --title $tag --verify-tag --generate-notes @assets
+        if ($LASTEXITCODE -ne 0) { throw "gh release create 失败，退出码 $LASTEXITCODE" }
+    - name: Publish Summary
+      if: always()
+      shell: pwsh
+      run: |
+        $rows = [ordered]@{
+          'GitHub Packages' = '${{ steps.ghpackages.outcome }}'
+          'NuGet.org'       = '${{ steps.nuget.outcome }}'
+        }
+        $marks = @{ success = '✅'; failure = '⚠️'; skipped = '⏭'; cancelled = '⛔' }
+        $lines = @('### 发布结果', '', '| 渠道 | 结果 |', '| --- | --- |')
+        foreach ($k in $rows.Keys) { $lines += "| $k | $($marks[$rows[$k]]) $($rows[$k]) |" }
+        $lines | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append

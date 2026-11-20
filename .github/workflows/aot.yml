@@ -1,0 +1,217 @@
+name: aot
+
+on:
+  push:
+    branches: [ master, dev ]
+    paths:
+      - 'NewLife.Presto/**'
+      - 'AotSmoke/**'
+      - 'Directory.Packages.props'
+      - '.github/workflows/aot.yml'
+  pull_request:
+    paths:
+      - 'NewLife.Presto/**'
+      - 'AotSmoke/**'
+      - 'Directory.Packages.props'
+      - '.github/workflows/aot.yml'
+  # 观察期平台（la64/musl/win-arm64/osx-*）只在夜间跑，主干 push 只跑必选阻断项
+  schedule:
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+
+jobs:
+  analyzer:
+    name: 裁剪/AOT 分析器（0 告警）
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v7
+    - name: Setup dotNET
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: |
+          10.x
+          11.x
+    - name: 构建驱动（net8.0 / net10.0 / net11.0）并校验 0 条 IL 告警
+      run: |
+        set -o pipefail
+        for tfm in net8.0 net10.0 net11.0; do
+          echo "===== NewLife.Presto ${tfm} ====="
+          log="build-presto-${tfm}.log"
+          dotnet build NewLife.Presto/NewLife.Presto.csproj -f ${tfm} -c Release -v n 2>&1 | tee "${log}"
+          if grep -nE 'warning IL[0-9]{4}' "${log}"; then
+            echo "::error::NewLife.Presto ${tfm} 存在裁剪/AOT 告警"
+            exit 1
+          fi
+        done
+        echo "裁剪/AOT 告警检查通过：0 条"
+
+  # NativeAOT 冒烟矩阵：NativeAOT 官方不支持跨 OS 编译，每个 RID 用原生 runner 发布与运行。
+  # 当前驱动力离线组件（连接串/协议头/类型映射/多语言/JSON），全部平台跑 --no-db 纯内存场景。
+  # 必选平台（阻断）：win-x64 / linux-x64 / linux-arm64。
+  native-smoke:
+    name: NativeAOT 冒烟（${{ matrix.rid }}）
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: win-x64
+            os: windows-latest
+            bin: AotSmoke.exe
+          - rid: linux-x64
+            os: ubuntu-latest
+            bin: AotSmoke
+          - rid: linux-arm64
+            os: ubuntu-24.04-arm
+            bin: AotSmoke
+
+    steps: &native-smoke-steps
+    - uses: actions/checkout@v7
+    - name: Setup dotNET
+      uses: actions/setup-dotnet@v6
+      with:
+        # 驱动工程含 net11.0，restore 需要 .NET 11 SDK；冒烟应用本身仍是 net10.0
+        dotnet-version: |
+          10.x
+          11.x
+    - name: 安装 NativeAOT 依赖（clang / zlib）
+      if: runner.os == 'Linux'
+      run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
+    - name: JIT 基线冒烟
+      run: dotnet run -c Release --project AotSmoke/AotSmoke.csproj -- --no-db
+    - name: NativeAOT 发布并校验 0 条 ILC 告警
+      shell: bash
+      run: |
+        set -o pipefail
+        dotnet publish AotSmoke/AotSmoke.csproj -c Release -r ${{ matrix.rid }} -o out 2>&1 | tee publish.log
+        # 已知上游告警白名单：NewLife.Core 的 MachineInfo.ReadDeviceInfo 带 Android 专用
+        # [DynamicDependency(..., "Mono.Android")]，桌面/Linux AOT 发布时该程序集不存在，ILC 报 IL2035。
+        known='IL2035: NewLife\.MachineInfo\.ReadDeviceInfo\(\): Unresolved assembly .Mono\.Android'
+        ignored=$(grep -cE "$known" publish.log || true)
+        hits=$(grep -E 'warning IL[0-9]{4}' publish.log | grep -vE "$known" || true)
+        echo "上游白名单命中 ${ignored:-0} 条（IL2035 / NewLife.MachineInfo.ReadDeviceInfo / Mono.Android）"
+        if [ -n "$hits" ]; then
+          echo "$hits"
+          echo "::error::NativeAOT 发布存在 IL 告警"
+          exit 1
+        fi
+        echo "ILC 告警检查通过：0 条"
+    - name: 运行原生冒烟
+      shell: bash
+      run: ./out/${{ matrix.bin }} --no-db
+
+  # 观察期平台（win-arm64 / osx-*）：只在夜间定时与手动触发时跑，失败不阻断
+  native-smoke-observing:
+    name: NativeAOT 冒烟（${{ matrix.rid }}）
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: win-arm64
+            os: windows-11-arm
+            bin: AotSmoke.exe
+          - rid: osx-arm64
+            os: macos-latest
+            bin: AotSmoke
+          - rid: osx-x64
+            os: macos-15-intel
+            bin: AotSmoke
+
+    steps: *native-smoke-steps
+
+  # NativeAOT 冒烟（musl）：alpine 容器内原生发布运行。容器内 actions/setup-dotnet 不可用，改用 dotnet-install.sh。
+  native-smoke-musl:
+    name: NativeAOT 冒烟（${{ matrix.rid }}）
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: linux-musl-x64
+            os: ubuntu-latest
+          - rid: linux-musl-arm64
+            os: ubuntu-24.04-arm
+
+    steps:
+    - uses: actions/checkout@v7
+    - name: Alpine 容器内发布并运行（--no-db）
+      run: |
+        docker run --rm -v "$PWD:/src" -w /src alpine:3.20 sh -c '
+          set -e
+          apk add --no-cache bash curl clang build-base zlib-dev icu-libs >/dev/null
+          curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
+          bash /tmp/dotnet-install.sh --channel 11.0 --install-dir /usr/share/dotnet >/dev/null
+          ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet
+          export DOTNET_CLI_TELEMETRY_OPTOUT=1
+          dotnet run -c Release --project AotSmoke/AotSmoke.csproj -- --no-db
+          if ! dotnet publish AotSmoke/AotSmoke.csproj -c Release -r ${{ matrix.rid }} -o AotSmoke/bin/aot-out > publish.log 2>&1; then
+            cat publish.log
+            exit 1
+          fi
+          known="IL2035: NewLife\.MachineInfo\.ReadDeviceInfo\(\): Unresolved assembly .Mono\.Android"
+          if grep -E "warning IL[0-9]{4}" publish.log | grep -vE "$known" | grep .; then
+            echo "NativeAOT 发布存在 IL 告警"
+            exit 1
+          fi
+          ./AotSmoke/bin/aot-out/AotSmoke --no-db
+        '
+
+  # 龙芯 LoongArch64：GitHub 无 loong64 原生 runner，使用 QEMU + 龙芯官方 .NET（观察期，失败不阻断）。
+  # 龙芯 SDK 未提供 NativeAOT 目标，本作业以「JIT 冒烟 + 自包含原生可执行文件」覆盖发布与运行链路。
+  native-smoke-loongarch64:
+    name: 冒烟（linux-la64 / QEMU）
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    continue-on-error: true
+    timeout-minutes: 90
+
+    steps:
+    - uses: actions/checkout@v7
+    - name: Setup QEMU
+      uses: docker/setup-qemu-action@v4
+    - name: 预拉取龙芯镜像（失败重试）
+      run: |
+        for i in 1 2 3 4; do
+          if docker pull --platform linux/loong64 cr.loongnix.cn/extra/dotnet:8.0.7; then exit 0; fi
+          echo "第 $i 次拉取失败，15 秒后重试"
+          sleep 15
+        done
+        echo "::error::龙芯镜像拉取失败"
+        exit 1
+    - name: 龙芯容器内构建并运行冒烟
+      run: |
+        docker run --rm --platform linux/loong64 \
+          -v "$PWD:/src" -w /src \
+          -e DOTNET_CLI_HOME=/tmp/dotnet-home \
+          -e DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+          -e DOTNET_NOLOGO=1 \
+          -e XDG_DATA_HOME=/tmp/dotnet-xdg \
+          -e NUGET_PACKAGES=/tmp/nuget/packages \
+          cr.loongnix.cn/extra/dotnet:8.0.7 \
+          bash -lc '
+            set -e
+            mkdir -p "$XDG_DATA_HOME/NuGet/Migrations" && touch "$XDG_DATA_HOME/NuGet/Migrations/1"
+            # 镜像内置龙芯 .NET 8 SDK；冒烟工程目标 net10.0，安装龙芯 .NET 10 SDK
+            if [ ! -x /root/dotnet10/dotnet ]; then
+              curl -sSL -o /tmp/dotnet10.tar.gz http://ftp.loongnix.cn/dotnet/10.0.12/10.0.12-1/pkg/dotnet-sdk-10.0.112-linux-loongarch64.tar.gz
+              mkdir -p /root/dotnet10 && tar -xzf /tmp/dotnet10.tar.gz -C /root/dotnet10
+            fi
+            export PATH=/root/dotnet10:$PATH
+            dotnet --info
+            # 龙芯 SDK 只有 10.0，用 TargetFrameworks 覆盖把依赖工程限定到 net10 目标
+            echo "===== JIT 基线冒烟 ====="
+            dotnet run -c Release --project AotSmoke/AotSmoke.csproj --property:TargetFrameworks=net10.0 -- --no-db
+            echo "===== 自包含原生发布（linux-loongarch64） ====="
+            dotnet publish AotSmoke/AotSmoke.csproj -c Release -r linux-loongarch64 --self-contained -p:TargetFrameworks=net10.0 -o AotSmoke/bin/la64-out
+            echo "===== 运行原生可执行文件 ====="
+            ./AotSmoke/bin/la64-out/AotSmoke --no-db
+          '
