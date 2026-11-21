@@ -38,8 +38,23 @@ public class PrestoDataAdapterTests
         var count = adapter.Fill(dataset);
 
         Assert.Equal(1, count);
-        Assert.Equal(1, dataset.Tables.Count);
+        Assert.Single(dataset.Tables);
         Assert.Equal(7L, dataset.Tables[0].Rows[0][0]);
+    }
+
+    [Fact(DisplayName = "命令构造与 SelectCommand 往返")]
+    public void SelectCommandRoundTrip()
+    {
+        using var connection = new PrestoConnection("Host=localhost;Port=8080;User=test");
+        using var command = new PrestoCommand("select 1", connection);
+        using var adapter = new PrestoDataAdapter(command);
+
+        Assert.Same(command, adapter.SelectCommand);
+
+        using var another = new PrestoCommand("select 2", connection);
+        adapter.SelectCommand = another;
+
+        Assert.Same(another, adapter.SelectCommand);
     }
 
     [Fact(DisplayName = "没有查询命令时 Fill 抛异常")]
