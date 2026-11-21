@@ -20,6 +20,7 @@ internal sealed class PrestoStatementClient
     private readonly ILog? _log;
     private readonly Uri _submitUri;
     private String? _queryId;
+    private String? _infoUri;
     private String? _nextUri;
     private Boolean _completed;
     private String? _basicAuthorization;
@@ -83,7 +84,7 @@ internal sealed class PrestoStatementClient
 
             if (!response.IsSuccessStatusCode) throw CreateHttpException(uri, response, body.GetText());
 
-            var results = body.ParseResults(_options.ComplexTypes == PrestoComplexType.Structured);
+            var results = body.ParseResults(_options.ComplexTypes == PrestoComplexType.Structured, _queryId, _infoUri);
             await ResolveSegmentsAsync(results, cancellationToken).ConfigureAwait(false);
             Apply(results);
 
@@ -132,7 +133,7 @@ internal sealed class PrestoStatementClient
 
                 if (!response.IsSuccessStatusCode) throw CreateHttpException(uri, response, body.GetText());
 
-                var results = body.ParseResults(_options.ComplexTypes == PrestoComplexType.Structured);
+                var results = body.ParseResults(_options.ComplexTypes == PrestoComplexType.Structured, _queryId, _infoUri);
                 await ResolveSegmentsAsync(results, cancellationToken).ConfigureAwait(false);
                 Apply(results);
 
@@ -185,7 +186,7 @@ internal sealed class PrestoStatementClient
 
             if (!response.IsSuccessStatusCode) throw CreateHttpException(uri, response, body.GetText());
 
-            var results = body.ParseResults(_options.ComplexTypes == PrestoComplexType.Structured);
+            var results = body.ParseResults(_options.ComplexTypes == PrestoComplexType.Structured, _queryId, _infoUri);
             ResolveSegments(results, cancellationToken);
             Apply(results);
 
@@ -250,7 +251,7 @@ internal sealed class PrestoStatementClient
 
                 if (!response.IsSuccessStatusCode) throw CreateHttpException(uri, response, body.GetText());
 
-                var results = body.ParseResults(_options.ComplexTypes == PrestoComplexType.Structured);
+                var results = body.ParseResults(_options.ComplexTypes == PrestoComplexType.Structured, _queryId, _infoUri);
                 ResolveSegments(results, cancellationToken);
                 Apply(results);
 
@@ -605,8 +606,9 @@ internal sealed class PrestoStatementClient
     {
         if (response.Content == null) return String.Empty;
 
-#if NET5_0_OR_GREATER
-        return await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+#if NET6_0_OR_GREATER
+        using var body = await PrestoResponseBody.ReadAsync(response, cancellationToken).ConfigureAwait(false);
+        return body.GetText();
 #else
         _ = cancellationToken;
         return await response.Content.ReadAsStringAsync().ConfigureAwait(false);
@@ -624,6 +626,7 @@ internal sealed class PrestoStatementClient
     private void Apply(PrestoQueryResults results)
     {
         if (!results.Id.IsNullOrEmpty()) _queryId = results.Id;
+        if (!results.InfoUri.IsNullOrEmpty()) _infoUri = results.InfoUri;
         _nextUri = results.NextUri;
         _completed = results.NextUri.IsNullOrEmpty();
     }

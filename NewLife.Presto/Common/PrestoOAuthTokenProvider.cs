@@ -120,8 +120,9 @@ internal sealed class PrestoOAuthTokenProvider : IDisposable
     {
         if (response.Content == null) return String.Empty;
 
-#if NET5_0_OR_GREATER
-        return await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+#if NET6_0_OR_GREATER
+        using var body = await PrestoResponseBody.ReadAsync(response, cancellationToken).ConfigureAwait(false);
+        return body.GetText();
 #else
         _ = cancellationToken;
         return await response.Content.ReadAsStringAsync().ConfigureAwait(false);

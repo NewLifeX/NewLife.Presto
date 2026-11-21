@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.IO;
+using System.IO.Compression;
 using System.Net.Http;
 using System.Text;
 using System.Threading;
@@ -52,13 +54,15 @@ internal sealed class PrestoResponseBody : IDisposable
     #region 解析
     /// <summary>解析单页查询结果</summary>
     /// <param name="structured">复杂类型是否返回结构化对象</param>
+    /// <param name="knownId">上一页的查询编号，内容相同则复用</param>
+    /// <param name="knownInfoUri">上一页的查询信息地址，内容相同则复用</param>
     /// <returns>查询结果</returns>
-    public PrestoQueryResults ParseResults(Boolean structured)
+    public PrestoQueryResults ParseResults(Boolean structured, String? knownId = null, String? knownInfoUri = null)
     {
 #if NET6_0_OR_GREATER
         if (_buffer == null) return PrestoJson.ParseResults((String?)null, structured);
 
-        return PrestoJson.ParseResultsUtf8(new ReadOnlySpan<Byte>(_buffer, 0, _length), structured);
+        return PrestoJson.ParseResultsUtf8(new ReadOnlySpan<Byte>(_buffer, 0, _length), structured, knownId, knownInfoUri);
 #else
         return PrestoJson.ParseResults(_text, structured);
 #endif
@@ -123,6 +127,8 @@ internal sealed class PrestoResponseBody : IDisposable
         try
         {
             using var stream = content.ReadAsStream(cancellationToken);
+            using var gzip = OpenDecompression(content, stream)!;
+            var source = gzip != null ? gzip : stream;
             while (true)
             {
                 if (total == buffer.Length)
@@ -133,7 +139,7 @@ internal sealed class PrestoResponseBody : IDisposable
                     buffer = larger;
                 }
 
-                var read = stream.Read(buffer, total, buffer.Length - total);
+                var read = source.Read(buffer, total, buffer.Length - total);
                 if (read <= 0) break;
 
                 total += read;
@@ -148,6 +154,20 @@ internal sealed class PrestoResponseBody : IDisposable
         }
     }
 
+    /// <summary>按 Content-Encoding 打开解压流；未压缩返回 null</summary>
+    private static Stream? OpenDecompression(HttpContent content, Stream stream)
+    {
+        foreach (var item in content.Headers.ContentEncoding)
+        {
+            if (String.Equals(item, "gzip", StringComparison.OrdinalIgnoreCase))
+                return new GZipStream(stream, CompressionMode.Decompress);
+            if (String.Equals(item, "deflate", StringComparison.OrdinalIgnoreCase))
+                return new DeflateStream(stream, CompressionMode.Decompress);
+        }
+
+        return null;
+    }
+
     private static async Task<(Byte[] Buffer, Int32 Length)> ReadBytesAsync(HttpContent content, CancellationToken cancellationToken)
     {
         var length = content.Headers.ContentLength;
@@ -158,6 +178,8 @@ internal sealed class PrestoResponseBody : IDisposable
         try
         {
             using var stream = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            using var gzip = OpenDecompression(content, stream);
+            var source = gzip != null ? gzip : stream;
             while (true)
             {
                 if (total == buffer.Length)
@@ -168,7 +190,7 @@ internal sealed class PrestoResponseBody : IDisposable
                     buffer = larger;
                 }
 
-                var read = await stream.ReadAsync(buffer.AsMemory(total), cancellationToken).ConfigureAwait(false);
+                var read = await source.ReadAsync(buffer.AsMemory(total), cancellationToken).ConfigureAwait(false);
                 if (read <= 0) break;
 
                 total += read;

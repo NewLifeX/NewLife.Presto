@@ -39,7 +39,12 @@ internal static class PrestoHttpClientCache
         {
             UseCookies = false,
             AllowAutoRedirect = true,
+#if NET6_0_OR_GREATER
+            // 现代目标由 PrestoResponseBody 解压到池化缓冲，省掉处理器内部的解压流与缓冲
+            AutomaticDecompression = DecompressionMethods.None,
+#else
             AutomaticDecompression = options.Compression ? DecompressionMethods.GZip | DecompressionMethods.Deflate : DecompressionMethods.None,
+#endif
         };
 
         if (!options.Proxy.IsNullOrEmpty())

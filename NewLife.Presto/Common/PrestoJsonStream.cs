@@ -19,8 +19,10 @@ internal static partial class PrestoJson
     /// <summary>解析单页查询结果</summary>
     /// <param name="utf8">UTF-8 JSON 字节</param>
     /// <param name="structured">复杂类型是否返回结构化对象</param>
+    /// <param name="knownId">上一页的查询编号，内容相同则复用，避免每页重复分配</param>
+    /// <param name="knownInfoUri">上一页的查询信息地址，内容相同则复用</param>
     /// <returns>查询结果</returns>
-    public static PrestoQueryResults ParseResultsUtf8(ReadOnlySpan<Byte> utf8, Boolean structured = false)
+    public static PrestoQueryResults ParseResultsUtf8(ReadOnlySpan<Byte> utf8, Boolean structured = false, String? knownId = null, String? knownInfoUri = null)
     {
         utf8 = TrimBom(utf8);
         if (IsBlank(utf8)) throw new PrestoException(Localization.Translate("The server returned an empty response."));
@@ -31,7 +33,7 @@ internal static partial class PrestoJson
             if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)
                 throw new JsonException("expected a JSON object");
 
-            return ReadResults(ref reader, utf8, structured);
+            return ReadResults(ref reader, utf8, structured, knownId, knownInfoUri);
         }
         catch (Exception ex) when (ex is not PrestoException)
         {
@@ -42,8 +44,11 @@ internal static partial class PrestoJson
     /// <summary>解析单页查询结果</summary>
     /// <param name="utf8">UTF-8 JSON 字节</param>
     /// <param name="structured">复杂类型是否返回结构化对象</param>
+    /// <param name="knownId">上一页的查询编号，内容相同则复用</param>
+    /// <param name="knownInfoUri">上一页的查询信息地址，内容相同则复用</param>
     /// <returns>查询结果</returns>
-    public static PrestoQueryResults ParseResultsUtf8(Byte[] utf8, Boolean structured = false) => ParseResultsUtf8(new ReadOnlySpan<Byte>(utf8), structured);
+    public static PrestoQueryResults ParseResultsUtf8(Byte[] utf8, Boolean structured = false, String? knownId = null, String? knownInfoUri = null)
+        => ParseResultsUtf8(new ReadOnlySpan<Byte>(utf8), structured, knownId, knownInfoUri);
 
     /// <summary>解析分段中的行数组</summary>
     /// <param name="utf8">UTF-8 JSON 字节</param>
@@ -73,7 +78,7 @@ internal static partial class PrestoJson
         AllowTrailingCommas = true,
     });
 
-    private static PrestoQueryResults ReadResults(ref Utf8JsonReader reader, ReadOnlySpan<Byte> utf8, Boolean structured)
+    private static PrestoQueryResults ReadResults(ref Utf8JsonReader reader, ReadOnlySpan<Byte> utf8, Boolean structured, String? knownId, String? knownInfoUri)
     {
         String? id = null;
         String? infoUri = null;
@@ -98,12 +103,12 @@ internal static partial class PrestoJson
             if (reader.ValueTextEquals("id"))
             {
                 reader.Read();
-                id = ReadText(ref reader);
+                id = ReadSharedText(ref reader, knownId);
             }
             else if (reader.ValueTextEquals("infoUri"))
             {
                 reader.Read();
-                infoUri = ReadText(ref reader);
+                infoUri = ReadSharedText(ref reader, knownInfoUri);
             }
             else if (reader.ValueTextEquals("nextUri"))
             {
@@ -153,7 +158,9 @@ internal static partial class PrestoJson
             else if (reader.ValueTextEquals("stats"))
             {
                 reader.Read();
-                stats = ReadStats(ref reader, utf8);
+
+                // 中间页只解析进度字段，原始 JSON 留给终页；字段顺序不同的服务端仍按原样保留
+                stats = ReadStats(ref reader, utf8, nextUri.IsNullOrEmpty());
             }
             else if (reader.ValueTextEquals("warnings"))
             {
@@ -280,7 +287,10 @@ internal static partial class PrestoJson
     }
 
     /// <summary>直接读取统计字段，原始 JSON 保留给 <see cref="PrestoQueryStats.Raw"/> 延迟解析</summary>
-    private static PrestoQueryStats? ReadStats(ref Utf8JsonReader reader, ReadOnlySpan<Byte> utf8)
+    /// <param name="reader">JSON 读取器</param>
+    /// <param name="utf8">整页字节</param>
+    /// <param name="keepRaw">是否保留原始 JSON；中间页只需要进度字段，省掉每页一次切片拷贝</param>
+    private static PrestoQueryStats? ReadStats(ref Utf8JsonReader reader, ReadOnlySpan<Byte> utf8, Boolean keepRaw = true)
     {
         if (reader.TokenType != JsonTokenType.StartObject)
         {
@@ -361,7 +371,7 @@ internal static partial class PrestoJson
             TotalSplits = totalSplits,
             CompletedSplits = completedSplits,
             RunningSplits = runningSplits,
-            RawUtf8 = utf8[start..end].ToArray(),
+            RawUtf8 = keepRaw ? utf8[start..end].ToArray() : null,
         };
     }
 
@@ -721,6 +731,14 @@ internal static partial class PrestoJson
     #endregion
 
     #region 辅助
+    /// <summary>读取文本；与上一页相同的字符串直接复用，避免每页重复分配</summary>
+    private static String? ReadSharedText(ref Utf8JsonReader reader, String? known)
+    {
+        if (known != null && reader.TokenType == JsonTokenType.String && reader.ValueTextEquals(known)) return known;
+
+        return ReadText(ref reader);
+    }
+
     private static String? ReadText(ref Utf8JsonReader reader)
     {
         switch (reader.TokenType)
