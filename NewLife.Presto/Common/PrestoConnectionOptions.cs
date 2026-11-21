@@ -40,6 +40,18 @@ internal sealed class PrestoConnectionOptions
     /// <summary>JWT/Bearer 令牌</summary>
     public String AccessToken { get; init; } = "";
 
+    /// <summary>OAuth2 令牌端点</summary>
+    public String TokenEndpoint { get; init; } = "";
+
+    /// <summary>OAuth2 客户端标识</summary>
+    public String ClientId { get; init; } = "";
+
+    /// <summary>OAuth2 客户端密钥</summary>
+    public String ClientSecret { get; init; } = "";
+
+    /// <summary>OAuth2 授权范围</summary>
+    public String Scope { get; init; } = "";
+
     /// <summary>协议类型</summary>
     public PrestoProtocol Protocol { get; init; }
 
@@ -123,6 +135,10 @@ internal sealed class PrestoConnectionOptions
             Password = builder.Password,
             Auth = builder.Auth,
             AccessToken = builder.AccessToken,
+            TokenEndpoint = builder.TokenEndpoint,
+            ClientId = builder.ClientId,
+            ClientSecret = builder.ClientSecret,
+            Scope = builder.Scope,
             Protocol = builder.Protocol,
             TimeZone = builder.TimeZone,
             Language = builder.Language,

@@ -1,16 +1,23 @@
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace NewLife.Presto;
 
 /// <summary>认证头生成器</summary>
-/// <remarks>只生成 Authorization 头，不记录密码或令牌；JWT 支持每次请求前通过回调刷新。</remarks>
+/// <remarks>
+/// 只生成 Authorization 头，不记录密码或令牌。JWT 与 OAuth2 都支持每次请求前刷新：
+/// 显式 <see cref="PrestoConnection.AccessTokenProvider"/> 优先级最高，其次才是内置 OAuth2 令牌缓存。
+/// </remarks>
 internal static class PrestoAuthProvider
 {
     /// <summary>生成 Authorization 头</summary>
     /// <param name="options">连接配置</param>
     /// <param name="tokenProvider">令牌刷新回调，可为空</param>
+    /// <param name="oauth">OAuth2 令牌提供者，可为空</param>
+    /// <param name="cancellationToken">取消令牌</param>
     /// <returns>Authorization 头值；无认证时为空</returns>
-    public static String? GetAuthorization(PrestoConnectionOptions options, Func<String>? tokenProvider)
+    public static async Task<String?> GetAuthorizationAsync(PrestoConnectionOptions options, Func<String>? tokenProvider, PrestoOAuthTokenProvider? oauth, CancellationToken cancellationToken)
     {
         if (options == null) return null;
 
@@ -28,6 +35,15 @@ internal static class PrestoAuthProvider
                     if (token.IsNullOrEmpty()) throw new PrestoException(Localization.Translate("AccessToken is required when Auth=JWT."));
 
                     return "Bearer " + token;
+                }
+            case PrestoAuth.OAuth2:
+                {
+                    var token = tokenProvider?.Invoke();
+                    if (!token.IsNullOrEmpty()) return "Bearer " + token;
+
+                    if (oauth == null) throw new PrestoException(Localization.Translate("OAuth2 authentication is not initialized."));
+
+                    return await oauth.GetAuthorizationAsync(cancellationToken).ConfigureAwait(false);
                 }
             default:
                 return null;

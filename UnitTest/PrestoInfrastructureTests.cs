@@ -14,20 +14,20 @@ namespace UnitTest;
 public class PrestoInfrastructureTests
 {
     [Fact(DisplayName = "无认证不生成 Authorization")]
-    public void NoAuth()
+    public async Task NoAuth()
     {
         var options = PrestoConnectionOptions.From(new PrestoConnectionStringBuilder("Host=localhost;Auth=None"));
 
-        Assert.Null(PrestoAuthProvider.GetAuthorization(options, null));
-        Assert.Null(PrestoAuthProvider.GetAuthorization(null, null));
+        Assert.Null(await PrestoAuthProvider.GetAuthorizationAsync(options, null, null, CancellationToken.None));
+        Assert.Null(await PrestoAuthProvider.GetAuthorizationAsync(null!, null, null, CancellationToken.None));
     }
 
     [Fact(DisplayName = "JWT 回调返回空时回退配置令牌")]
-    public void JwtFallback()
+    public async Task JwtFallback()
     {
         var options = PrestoConnectionOptions.From(new PrestoConnectionStringBuilder("Host=localhost;Auth=JWT;AccessToken=fixed"));
 
-        Assert.Equal("Bearer fixed", PrestoAuthProvider.GetAuthorization(options, () => ""));
+        Assert.Equal("Bearer fixed", await PrestoAuthProvider.GetAuthorizationAsync(options, () => "", null, CancellationToken.None));
     }
 
     [Fact(DisplayName = "连接配置空参数校验")]

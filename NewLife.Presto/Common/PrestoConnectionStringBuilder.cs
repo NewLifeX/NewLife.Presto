@@ -20,6 +20,10 @@ public sealed class PrestoConnectionStringBuilder : DbConnectionStringBuilder
     private static readonly String[] _sslKeys = ["UseSsl", "UseSSL", "EnableSSL", "SSL"];
     private static readonly String[] _trustKeys = ["TrustServerCertificate", "IgnoreSslErrors"];
     private static readonly String[] _tokenKeys = ["AccessToken", "Token"];
+    private static readonly String[] _tokenEndpointKeys = ["TokenEndpoint", "OAuthTokenEndpoint", "OAuthEndpoint", "TokenUrl", "OAuthTokenUrl"];
+    private static readonly String[] _clientIdKeys = ["ClientId", "OAuthClientId", "AppKey", "AppId"];
+    private static readonly String[] _clientSecretKeys = ["ClientSecret", "OAuthClientSecret", "AppSecret"];
+    private static readonly String[] _scopeKeys = ["Scope", "OAuthScope"];
     #endregion
 
     #region 构造
@@ -146,6 +150,7 @@ public sealed class PrestoConnectionStringBuilder : DbConnectionStringBuilder
             if (value.EqualIgnoreCase("None", "Anonymous")) return PrestoAuth.None;
             if (value.EqualIgnoreCase("Basic")) return PrestoAuth.Basic;
             if (value.EqualIgnoreCase("JWT", "Bearer", "Token")) return PrestoAuth.Jwt;
+            if (value.EqualIgnoreCase("OAuth2", "OAuth", "ClientCredentials", "ClientCredentialsFlow")) return PrestoAuth.OAuth2;
 
             throw new ArgumentException(Localization.Translate("Unsupported authentication mode: {0}.", value), nameof(Auth));
         }
@@ -157,6 +162,34 @@ public sealed class PrestoConnectionStringBuilder : DbConnectionStringBuilder
     {
         get => GetString("AccessToken") ?? String.Empty;
         set => this["AccessToken"] = value;
+    }
+
+    /// <summary>OAuth2 令牌端点。Auth=OAuth2 时必填</summary>
+    public String TokenEndpoint
+    {
+        get => GetString("TokenEndpoint") ?? String.Empty;
+        set => this["TokenEndpoint"] = value;
+    }
+
+    /// <summary>OAuth2 客户端标识。Auth=OAuth2 时必填</summary>
+    public String ClientId
+    {
+        get => GetString("ClientId") ?? String.Empty;
+        set => this["ClientId"] = value;
+    }
+
+    /// <summary>OAuth2 客户端密钥</summary>
+    public String ClientSecret
+    {
+        get => GetString("ClientSecret") ?? String.Empty;
+        set => this["ClientSecret"] = value;
+    }
+
+    /// <summary>OAuth2 授权范围，空格分隔</summary>
+    public String Scope
+    {
+        get => GetString("Scope") ?? String.Empty;
+        set => this["Scope"] = value;
     }
 
     /// <summary>协议类型。默认 PrestoDB</summary>
@@ -383,6 +416,14 @@ public sealed class PrestoConnectionStringBuilder : DbConnectionStringBuilder
 
         if (Auth == PrestoAuth.Jwt && AccessToken.IsNullOrEmpty())
             throw new ArgumentException(Localization.Translate("AccessToken is required when Auth=JWT."), nameof(AccessToken));
+
+        if (Auth == PrestoAuth.OAuth2)
+        {
+            if (TokenEndpoint.IsNullOrEmpty())
+                throw new ArgumentException(Localization.Translate("OAuth2 authentication requires a token endpoint."), nameof(TokenEndpoint));
+            if (ClientId.IsNullOrEmpty())
+                throw new ArgumentException(Localization.Translate("OAuth2 authentication requires a client id."), nameof(ClientId));
+        }
     }
 
     private void Normalize()
@@ -400,6 +441,10 @@ public sealed class PrestoConnectionStringBuilder : DbConnectionStringBuilder
             Move(_sslKeys, "UseSsl");
             Move(_trustKeys, "TrustServerCertificate");
             Move(_tokenKeys, "AccessToken");
+            Move(_tokenEndpointKeys, "TokenEndpoint");
+            Move(_clientIdKeys, "ClientId");
+            Move(_clientSecretKeys, "ClientSecret");
+            Move(_scopeKeys, "Scope");
             Move(["ApplicationName"], "Source");
             Move(["BasePath"], "Path");
             Move(["HttpProxy"], "Proxy");

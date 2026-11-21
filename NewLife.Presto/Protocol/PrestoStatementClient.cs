@@ -27,6 +27,9 @@ internal sealed class PrestoStatementClient
     /// <summary>JWT 令牌刷新回调</summary>
     public Func<String>? AccessTokenProvider { get; set; }
 
+    /// <summary>OAuth2 令牌提供者</summary>
+    public PrestoOAuthTokenProvider? OAuthTokenProvider { get; set; }
+
     /// <summary>当前查询编号</summary>
     public String? QueryId => _queryId;
 
@@ -64,7 +67,7 @@ internal sealed class PrestoStatementClient
         using var span = PrestoDiagnostics.StartExecute(_options, sql);
         try
         {
-            using var request = CreateRequest(HttpMethod.Post, uri);
+            using var request = await CreateRequestAsync(HttpMethod.Post, uri, cancellationToken).ConfigureAwait(false);
             request.Content = new StringContent(sql, Encoding.UTF8, "text/plain");
 
             using var response = await SendOnceAsync(request, cancellationToken).ConfigureAwait(false);
@@ -100,7 +103,7 @@ internal sealed class PrestoStatementClient
             var attempt = 0;
             while (true)
             {
-                using var request = CreateRequest(HttpMethod.Get, uri);
+                using var request = await CreateRequestAsync(HttpMethod.Get, uri, cancellationToken).ConfigureAwait(false);
                 using var response = await SendOnceAsync(request, cancellationToken).ConfigureAwait(false);
 
                 var status = (Int32)response.StatusCode;
@@ -147,7 +150,7 @@ internal sealed class PrestoStatementClient
             var attempt = 0;
             while (true)
             {
-                using var request = CreateRequest(HttpMethod.Get, uri);
+                using var request = await CreateRequestAsync(HttpMethod.Get, uri, cancellationToken).ConfigureAwait(false);
                 using var response = await SendOnceAsync(request, cancellationToken).ConfigureAwait(false);
 
                 var status = (Int32)response.StatusCode;
@@ -190,7 +193,7 @@ internal sealed class PrestoStatementClient
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-            using var request = CreateRequest(HttpMethod.Delete, ResolveUri(next!));
+            using var request = await CreateRequestAsync(HttpMethod.Delete, ResolveUri(next!), cts.Token).ConfigureAwait(false);
             using var response = await _client.SendAsync(request, cts.Token).ConfigureAwait(false);
             _session.ApplyResponseHeaders(response);
         }
@@ -210,7 +213,7 @@ internal sealed class PrestoStatementClient
     #endregion
 
     #region 辅助
-    private HttpRequestMessage CreateRequest(HttpMethod method, Uri uri)
+    private async Task<HttpRequestMessage> CreateRequestAsync(HttpMethod method, Uri uri, CancellationToken cancellationToken)
     {
         var request = new HttpRequestMessage(method, uri);
 
@@ -219,7 +222,7 @@ internal sealed class PrestoStatementClient
             request.Headers.TryAddWithoutValidation(item.Key, item.Value);
         }
 
-        var authorization = PrestoAuthProvider.GetAuthorization(_options, AccessTokenProvider);
+        var authorization = await PrestoAuthProvider.GetAuthorizationAsync(_options, AccessTokenProvider, OAuthTokenProvider, cancellationToken).ConfigureAwait(false);
         if (!authorization.IsNullOrEmpty()) request.Headers.TryAddWithoutValidation("Authorization", authorization);
 
         request.Headers.TryAddWithoutValidation("User-Agent", "NewLife.Presto/" + PrestoDriver.Version);

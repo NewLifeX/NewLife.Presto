@@ -22,4 +22,7 @@ public enum PrestoAuth
 
     /// <summary>JWT/Bearer 认证</summary>
     Jwt = 2,
+
+    /// <summary>OAuth2 客户端凭据。用 TokenEndpoint + ClientId + ClientSecret 换取 Bearer 令牌</summary>
+    OAuth2 = 3,
 }

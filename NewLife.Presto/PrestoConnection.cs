@@ -23,6 +23,7 @@ public sealed class PrestoConnection : DbConnection
     private readonly HttpMessageHandler? _handler;
     private readonly Boolean _ownsClient;
     private readonly List<PrestoCommand> _commands = [];
+    private PrestoOAuthTokenProvider? _oauth;
     private ConnectionState _state = ConnectionState.Closed;
     private PrestoServerInfo? _serverInfo;
     #endregion
@@ -132,6 +133,7 @@ public sealed class PrestoConnection : DbConnection
         {
             _options = options;
             _session = new PrestoSessionState(options);
+            _oauth = options.Auth == PrestoAuth.OAuth2 ? new PrestoOAuthTokenProvider(options, _handler) : null;
             _client = _handler != null
                 ? new HttpClient(_handler, false) { BaseAddress = options.BaseAddress, Timeout = Timeout.InfiniteTimeSpan }
                 : PrestoHttpClientCache.Get(options);
@@ -151,6 +153,8 @@ public sealed class PrestoConnection : DbConnection
             _client = null;
             _session = null;
             _options = null;
+            _oauth?.Dispose();
+            _oauth = null;
             SetState(ConnectionState.Closed);
 
             throw;
@@ -175,6 +179,8 @@ public sealed class PrestoConnection : DbConnection
         _client = null;
         _session = null;
         _options = null;
+        _oauth?.Dispose();
+        _oauth = null;
         _serverInfo = null;
         SchemaCache.Clear();
 
@@ -279,7 +285,11 @@ public sealed class PrestoConnection : DbConnection
         if (_client == null || _options == null || _session == null)
             throw new InvalidOperationException(Localization.Translate("The connection is not open."));
 
-        return new PrestoStatementClient(_client, _options, _session, Log) { AccessTokenProvider = AccessTokenProvider };
+        return new PrestoStatementClient(_client, _options, _session, Log)
+        {
+            AccessTokenProvider = AccessTokenProvider,
+            OAuthTokenProvider = _oauth,
+        };
     }
 
     /// <summary>注册活跃命令</summary>
