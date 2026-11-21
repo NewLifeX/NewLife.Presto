@@ -74,11 +74,16 @@ $nugetConfig = @"
 & dotnet add (Join-Path $consumer "Consumer.csproj") package NewLife.Presto --version $pkgVersion
 if ($LASTEXITCODE -ne 0) { throw "添加本地包失败" }
 
+& dotnet add (Join-Path $consumer "Consumer.csproj") package NewLife.Presto.EntityFrameworkCore --version $pkgVersion
+if ($LASTEXITCODE -ne 0) { throw "添加 EF Core 提供程序包失败" }
+
 $program = @'
 using System.Globalization;
 using System.Reflection;
+using Microsoft.EntityFrameworkCore;
 using NewLife;
 using NewLife.Presto;
+using NewLife.Presto.EntityFrameworkCore;
 
 var builder = new PrestoConnectionStringBuilder("Server=presto.local;Port=8443;Database=hive;Owner=default;TrinoHeaders=true");
 if (builder.Host != "presto.local") throw new Exception("Host alias failed");
@@ -91,6 +96,16 @@ if (PrestoException.SubmitFailed(503).HttpStatusCode != 503) throw new Exception
 var assembly = typeof(PrestoConnectionStringBuilder).Assembly;
 var title = assembly.GetCustomAttribute<AssemblyTitleAttribute>()?.Title ?? "";
 if (String.IsNullOrWhiteSpace(title)) throw new Exception("AssemblyTitle is empty");
+
+// EF Core 提供程序：构建模型即可验证包引用、服务注册与类型映射，不需要连接数据库
+var options = new DbContextOptionsBuilder<SmokeContext>()
+    .UsePresto("Host=presto.local;Port=8080;Catalog=hive;Schema=default;User=test")
+    .Options;
+using (var context = new SmokeContext(options))
+{
+    var count = context.Model.GetEntityTypes().Count();
+    if (count == 0) throw new Exception("EF Core model has no entity types");
+}
 
 Localization.Culture = CultureInfo.GetCultureInfo("zh-Hans");
 var zh = Localization.Translate("Host cannot be empty.");
@@ -107,6 +122,20 @@ var fallback = Localization.Translate("Host cannot be empty.");
 if (fallback != "Host cannot be empty.") throw new Exception("English fallback broken");
 
 Console.WriteLine("OK: " + zh + " | " + ja + " | " + zhTitle);
+
+public sealed class SmokeContext : DbContext
+{
+    public SmokeContext(DbContextOptions<SmokeContext> options) : base(options) { }
+
+    public DbSet<SmokeItem> Items => Set<SmokeItem>();
+}
+
+public sealed class SmokeItem
+{
+    public Int32 Id { get; set; }
+
+    public String? Name { get; set; }
+}
 '@
 [IO.File]::WriteAllText((Join-Path $consumer "Program.cs"), $program, (New-Object System.Text.UTF8Encoding($false)))
 

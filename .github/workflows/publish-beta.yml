@@ -6,6 +6,10 @@ on:
     paths:
       - 'NewLife.Presto/**'
       - 'UnitTest/**'
+      - 'UnitTest.EntityFramework/**'
+      - 'UnitTest.EntityFrameworkCore/**'
+      - 'NewLife.Presto.EntityFramework/**'
+      - 'NewLife.Presto.EntityFrameworkCore/**'
       - 'Test/**'
       - 'AotSmoke/**'
       - 'tools/**'
