@@ -47,3 +47,4 @@
 "Command behavior {0} is not supported.": "कमांड व्यवहार {0} समर्थित नहीं है।"
 "Parameter must be of type PrestoParameter.": "पैरामीटर PrestoParameter प्रकार का होना चाहिए।"
 "TrustServerCertificate is enabled; server certificate validation is disabled.": "TrustServerCertificate सक्षम है; सर्वर प्रमाणपत्र सत्यापन अक्षम है।"
+"The batch contains no commands.": "The batch contains no commands."

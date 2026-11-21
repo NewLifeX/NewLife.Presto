@@ -47,3 +47,4 @@
 "Command behavior {0} is not supported.": "Comportamentul comenzii {0} nu este acceptat."
 "Parameter must be of type PrestoParameter.": "Parametrul trebuie să fie de tip PrestoParameter."
 "TrustServerCertificate is enabled; server certificate validation is disabled.": "TrustServerCertificate este activat; validarea certificatului serverului este dezactivată."
+"The batch contains no commands.": "The batch contains no commands."

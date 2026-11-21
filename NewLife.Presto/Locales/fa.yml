@@ -47,3 +47,4 @@
 "Command behavior {0} is not supported.": "رفتار دستور {0} پشتیبانی نمی‌شود."
 "Parameter must be of type PrestoParameter.": "پارامتر باید از نوع PrestoParameter باشد."
 "TrustServerCertificate is enabled; server certificate validation is disabled.": "TrustServerCertificate فعال است؛ اعتبارسنجی گواهی سرور غیرفعال شده است."
+"The batch contains no commands.": "The batch contains no commands."

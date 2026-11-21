@@ -47,3 +47,4 @@
 "Command behavior {0} is not supported.": "Режим команди {0} не підтримується."
 "Parameter must be of type PrestoParameter.": "Параметр має бути типу PrestoParameter."
 "TrustServerCertificate is enabled; server certificate validation is disabled.": "TrustServerCertificate увімкнено; перевірку сертифіката сервера вимкнено."
+"The batch contains no commands.": "The batch contains no commands."

@@ -47,3 +47,4 @@
 "Command behavior {0} is not supported.": "Kommandobeteendet {0} stöds inte."
 "Parameter must be of type PrestoParameter.": "Parametern måste vara av typen PrestoParameter."
 "TrustServerCertificate is enabled; server certificate validation is disabled.": "TrustServerCertificate är aktiverat; valideringen av servercertifikatet är inaktiverad."
+"The batch contains no commands.": "The batch contains no commands."

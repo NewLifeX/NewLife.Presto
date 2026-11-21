@@ -47,3 +47,4 @@
 "Command behavior {0} is not supported.": "不支持命令行为 {0}。"
 "Parameter must be of type PrestoParameter.": "参数必须是 PrestoParameter 类型。"
 "TrustServerCertificate is enabled; server certificate validation is disabled.": "已启用 TrustServerCertificate；服务器证书校验已禁用。"
+"The batch contains no commands.": "批量命令集合为空。"

@@ -47,3 +47,4 @@
 "Command behavior {0} is not supported.": "سلوك الأمر {0} غير مدعوم."
 "Parameter must be of type PrestoParameter.": "يجب أن تكون المعلمة من النوع PrestoParameter."
 "TrustServerCertificate is enabled; server certificate validation is disabled.": "تم تمكين TrustServerCertificate؛ تم تعطيل التحقق من شهادة الخادم."
+"The batch contains no commands.": "The batch contains no commands."

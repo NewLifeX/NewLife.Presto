@@ -216,6 +216,15 @@ public sealed class PrestoConnection : DbConnection
     /// <returns>命令</returns>
     protected override DbCommand CreateDbCommand() => new PrestoCommand { Connection = this };
 
+#if NET6_0_OR_GREATER
+    /// <summary>是否支持创建批量命令</summary>
+    public override Boolean CanCreateBatch => true;
+
+    /// <summary>创建批量命令</summary>
+    /// <returns>批量命令</returns>
+    protected override DbBatch CreateDbBatch() => new PrestoBatch { Connection = this };
+#endif
+
     /// <summary>开始事务。Presto/Trino 不支持</summary>
     /// <param name="isolationLevel">隔离级别</param>
     /// <returns>不会返回</returns>

@@ -47,3 +47,4 @@
 "Command behavior {0} is not supported.": "コマンド動作 {0} はサポートされていません。"
 "Parameter must be of type PrestoParameter.": "パラメーターは PrestoParameter 型である必要があります。"
 "TrustServerCertificate is enabled; server certificate validation is disabled.": "TrustServerCertificate が有効になっているため、サーバー証明書の検証が無効になっています。"
+"The batch contains no commands.": "The batch contains no commands."

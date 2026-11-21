@@ -47,3 +47,4 @@
 "Command behavior {0} is not supported.": "Perilaku perintah {0} tidak didukung."
 "Parameter must be of type PrestoParameter.": "Parameter harus bertipe PrestoParameter."
 "TrustServerCertificate is enabled; server certificate validation is disabled.": "TrustServerCertificate diaktifkan; validasi sertifikat server dinonaktifkan."
+"The batch contains no commands.": "The batch contains no commands."

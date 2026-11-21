@@ -47,3 +47,4 @@
 "Command behavior {0} is not supported.": "Chování příkazu {0} není podporováno."
 "Parameter must be of type PrestoParameter.": "Parametr musí být typu PrestoParameter."
 "TrustServerCertificate is enabled; server certificate validation is disabled.": "TrustServerCertificate je povoleno; ověřování certifikátu serveru je zakázáno."
+"The batch contains no commands.": "The batch contains no commands."

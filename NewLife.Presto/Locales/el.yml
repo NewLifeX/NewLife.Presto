@@ -47,3 +47,4 @@
 "Command behavior {0} is not supported.": "Η συμπεριφορά εντολής {0} δεν υποστηρίζεται."
 "Parameter must be of type PrestoParameter.": "Η παράμετρος πρέπει να είναι τύπου PrestoParameter."
 "TrustServerCertificate is enabled; server certificate validation is disabled.": "Το TrustServerCertificate είναι ενεργοποιημένο· η επικύρωση του πιστοποιητικού διακομιστή είναι απενεργοποιημένη."
+"The batch contains no commands.": "The batch contains no commands."

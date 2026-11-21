@@ -61,5 +61,11 @@ public sealed class PrestoClientFactory : DbProviderFactory
     /// <returns>数据源</returns>
     public override DbDataSource CreateDataSource(String connectionString) => new PrestoDataSource(connectionString);
 #endif
+
+#if NET6_0_OR_GREATER
+    /// <summary>创建批量命令</summary>
+    /// <returns>批量命令</returns>
+    public override DbBatch CreateBatch() => new PrestoBatch();
+#endif
     #endregion
 }

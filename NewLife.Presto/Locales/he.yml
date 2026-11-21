@@ -47,3 +47,4 @@
 "Command behavior {0} is not supported.": "התנהגות הפקודה {0} אינה נתמכת."
 "Parameter must be of type PrestoParameter.": "הפרמטר חייב להיות מסוג PrestoParameter."
 "TrustServerCertificate is enabled; server certificate validation is disabled.": "TrustServerCertificate מופעל; אימות תעודת השרת מושבת."
+"The batch contains no commands.": "The batch contains no commands."

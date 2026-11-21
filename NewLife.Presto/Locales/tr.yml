@@ -47,3 +47,4 @@
 "Command behavior {0} is not supported.": "Komut davranışı {0} desteklenmiyor."
 "Parameter must be of type PrestoParameter.": "Parametre PrestoParameter türünde olmalıdır."
 "TrustServerCertificate is enabled; server certificate validation is disabled.": "TrustServerCertificate etkin; sunucu sertifikası doğrulaması devre dışı."
+"The batch contains no commands.": "The batch contains no commands."

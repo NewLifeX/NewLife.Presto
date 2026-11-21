@@ -47,3 +47,4 @@
 "Command behavior {0} is not supported.": "O comportamento de comando {0} não é suportado."
 "Parameter must be of type PrestoParameter.": "O parâmetro deve ser do tipo PrestoParameter."
 "TrustServerCertificate is enabled; server certificate validation is disabled.": "TrustServerCertificate está habilitado; a validação do certificado do servidor está desabilitada."
+"The batch contains no commands.": "The batch contains no commands."
