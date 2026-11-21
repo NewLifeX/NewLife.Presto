@@ -253,7 +253,8 @@ public sealed class PrestoCommand : DbCommand
 
     private static void ValidateBehavior(CommandBehavior behavior)
     {
-        const CommandBehavior supported = CommandBehavior.Default | CommandBehavior.SingleResult | CommandBehavior.SchemaOnly | CommandBehavior.SingleRow | CommandBehavior.CloseConnection;
+        // SequentialAccess 对按页流式读取天然成立，DataAdapter.Fill 会带上该标志
+        const CommandBehavior supported = CommandBehavior.Default | CommandBehavior.SingleResult | CommandBehavior.SchemaOnly | CommandBehavior.SingleRow | CommandBehavior.CloseConnection | CommandBehavior.SequentialAccess;
         if ((behavior & ~supported) != 0) throw PrestoUnsupported.CommandBehavior((Int32)behavior);
     }
     #endregion

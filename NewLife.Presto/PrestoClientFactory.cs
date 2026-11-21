@@ -21,8 +21,8 @@ public sealed class PrestoClientFactory : DbProviderFactory
 
     #region 属性
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP
-    /// <summary>是否支持创建数据适配器。首版不支持</summary>
-    public override Boolean CanCreateDataAdapter => false;
+    /// <summary>是否支持创建数据适配器</summary>
+    public override Boolean CanCreateDataAdapter => true;
 
     /// <summary>是否支持创建命令构建器。不支持</summary>
     public override Boolean CanCreateCommandBuilder => false;
@@ -48,5 +48,18 @@ public sealed class PrestoClientFactory : DbProviderFactory
     /// <summary>创建连接字符串构建器</summary>
     /// <returns>连接字符串构建器</returns>
     public override DbConnectionStringBuilder CreateConnectionStringBuilder() => new PrestoConnectionStringBuilder();
+
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP
+    /// <summary>创建数据适配器</summary>
+    /// <returns>数据适配器</returns>
+    public override DbDataAdapter CreateDataAdapter() => new PrestoDataAdapter();
+#endif
+
+#if NET8_0_OR_GREATER
+    /// <summary>创建数据源</summary>
+    /// <param name="connectionString">连接字符串</param>
+    /// <returns>数据源</returns>
+    public override DbDataSource CreateDataSource(String connectionString) => new PrestoDataSource(connectionString);
+#endif
     #endregion
 }
