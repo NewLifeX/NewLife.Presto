@@ -17,9 +17,9 @@
 🌐 [简体中文](https://github.com/NewLifeX/NewLife.Presto/blob/master/README.zh-CN.md) | [繁體中文](https://github.com/NewLifeX/NewLife.Presto/blob/master/README.zh-TW.md) | [Español](https://github.com/NewLifeX/NewLife.Presto/blob/master/README.es.md) | [Deutsch](https://github.com/NewLifeX/NewLife.Presto/blob/master/README.de.md) | [日本語](https://github.com/NewLifeX/NewLife.Presto/blob/master/README.ja.md) | [Français](https://github.com/NewLifeX/NewLife.Presto/blob/master/README.fr.md) | [Português](https://github.com/NewLifeX/NewLife.Presto/blob/master/README.pt.md) | [Русский](https://github.com/NewLifeX/NewLife.Presto/blob/master/README.ru.md) | [한국어](https://github.com/NewLifeX/NewLife.Presto/blob/master/README.ko.md) | [العربية](https://github.com/NewLifeX/NewLife.Presto/blob/master/README.ar.md)
 <!-- lang:end -->
 
-**NewLife.Presto** is a pure C# ADO.NET driver for PrestoDB and Trino from the NewLife team. It speaks the official HTTP REST v1 client protocol, depends only on `NewLife.Core` with **zero third-party dependencies**, ships **33 runtime languages**, targets `net45` through `net11`, and is **NativeAOT ready** on `net8.0+`. PrestoDB and Trino share one package; `Protocol=Trino` (or `TrinoHeaders=true`) switches the request headers.
+**NewLife.Presto** is a pure C# ADO.NET driver for PrestoDB and Trino from the NewLife team. It speaks the official HTTP REST v1 client protocol, depends only on `NewLife.Core` with **zero third-party dependencies**, ships **33 runtime languages**, targets `net45` through `net11`, and is **NativeAOT ready** on `net8.0+`. PrestoDB and Trino share one package; `Protocol=Trino` (or `TrinoHeaders=true`) switches the request headers. Trino 466+ spooling is supported with uncompressed JSON segments.
 
-> **Project status**: implemented and tested — core ADO.NET driver plus read-only EF Core and EF6 providers, built as three NuGet packages shipped by one release pipeline. 484 core unit tests, EF provider tests and real Trino/PrestoDB integration pass; only Spooling is deferred. See [Doc/功能清单.md](https://github.com/NewLifeX/NewLife.Presto/blob/master/Doc/功能清单.md).
+> **Project status**: implemented and tested — core ADO.NET driver plus read-only EF Core and EF6 providers, built as three NuGet packages shipped by one release pipeline. 503 core unit tests, EF provider tests and real Trino/PrestoDB integration pass; spooling covers uncompressed JSON segments and falls back to the direct protocol otherwise. See [Doc/功能清单.md](https://github.com/NewLifeX/NewLife.Presto/blob/master/Doc/功能清单.md).
 
 **Contents**: [Quick Start](#quick-start) · [Why NewLife.Presto](#why-newlifepresto) · [Main Features](#main-features) · [Platform Support](#platform-support) · [Localization](#localization) · [Documentation](#documentation) · [Contributing](#contributing) · [Ecosystem Map](#ecosystem-map) · [Team](#team) · [License](#license)
 
@@ -52,11 +52,18 @@ var count = await cmd.ExecuteScalarAsync();
 ```
 ```csharp
 // Entity Framework Core (read-only)
+using Microsoft.EntityFrameworkCore;
+using NewLife.Presto.EntityFrameworkCore;
+
 var options = new DbContextOptionsBuilder<MyDbContext>()
     .UsePresto("Host=localhost;Port=8080;Catalog=hive;Schema=default;User=test")
     .Options;
-
+```
+```csharp
 // Entity Framework 6 (read-only)
+using System.Data.Entity;
+using NewLife.Presto.EntityFramework;
+
 DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
 ```
 
@@ -88,7 +95,7 @@ DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
 </details>
 
 <details>
-<summary><b>Query & Types</b> (7 items)</summary>
+<summary><b>Query & Types</b> (8 items)</summary>
 
 | Feature | What it gives you |
 |---------|-------------------|
@@ -99,6 +106,7 @@ DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
 | Type fidelity | Boolean, integer, decimal, date/time, timestamp with time zone, UUID, IP and binary |
 | Complex types | `array`/`map`/`row` default to raw strings; `ComplexTypes=Structured` returns `object[]` and dictionaries |
 | `DbBatch` (.NET 6+) | Sequential batch commands with summed affected rows and cancellation propagated to the whole batch |
+| Spooling (Trino 466+) | `Spooling=true` requests uncompressed JSON segments, downloads them from object storage and acknowledges them |
 
 </details>
 

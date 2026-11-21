@@ -17,7 +17,7 @@
 
 **NewLife.Presto**는 NewLife 팀이 만든 PrestoDB / Trino용 순수 C# ADO.NET 드라이버입니다. 공식 HTTP REST v1 클라이언트 프로토콜을 사용하며 `NewLife.Core`에만 의존하는 **타사 종속성 제로** 드라이버입니다. **33개 런타임 언어**를 내장하고 `net45`부터 `net11`까지 지원하며 `net8.0+`에서 **NativeAOT를 지원**합니다. PrestoDB와 Trino는 하나의 패키지를 공유하며 `Protocol=Trino`(또는 `TrinoHeaders=true`)로 요청 헤더를 전환합니다.
 
-> **프로젝트 상태**: 구현 및 테스트 완료 — 핵심 ADO.NET 드라이버와 읽기 전용 EF Core/EF6 Provider를 세 개의 NuGet 패키지로 동일 릴리스 파이프라인에서 제공합니다. 핵심 단위 테스트 484개, EF Provider 테스트, 실제 Trino/PrestoDB 통합이 모두 통과했으며 남은 항목은 Spooling(보류)뿐입니다. [기능 목록](Doc/功能清单.md)을 참조하세요.
+> **프로젝트 상태**: 구현 및 테스트 완료 — 핵심 ADO.NET 드라이버와 읽기 전용 EF Core/EF6 Provider를 세 개의 NuGet 패키지로 동일 릴리스 파이프라인에서 제공합니다. 핵심 단위 테스트 503개, EF Provider 테스트, 실제 Trino/PrestoDB 통합이 모두 통과했으며 Spooling은 비압축 JSON 세그먼트를 지원하고 그 외에는 직접 프로토콜로 자동 폴백합니다. [기능 목록](Doc/功能清单.md)을 참조하세요.
 
 **목차**: [빠른 시작](#빠른-시작) · [NewLife.Presto를 선택하는 이유](#newlifepresto를-선택하는-이유) · [주요 기능](#주요-기능) · [플랫폼 지원](#플랫폼-지원) · [다국어](#다국어) · [문서](#문서) · [기여](#기여) · [생태계 지도](#생태계-지도) · [팀](#팀) · [라이선스](#라이선스)
 
@@ -50,11 +50,18 @@ var count = await cmd.ExecuteScalarAsync();
 ```
 ```csharp
 // Entity Framework Core (read-only)
+using Microsoft.EntityFrameworkCore;
+using NewLife.Presto.EntityFrameworkCore;
+
 var options = new DbContextOptionsBuilder<MyDbContext>()
     .UsePresto("Host=localhost;Port=8080;Catalog=hive;Schema=default;User=test")
     .Options;
-
+```
+```csharp
 // Entity Framework 6 (read-only)
+using System.Data.Entity;
+using NewLife.Presto.EntityFramework;
+
 DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
 ```
 

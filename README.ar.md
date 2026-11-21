@@ -17,7 +17,7 @@
 
 **NewLife.Presto** هو برنامج تشغيل ADO.NET نقي بلغة C# لـ PrestoDB وTrino من فريق NewLife. يستخدم بروتوكول عميل HTTP REST v1 الرسمي، ويعتمد على `NewLife.Core` فقط مع **صفر تبعيات خارجية**، ويضم **33 لغة وقت تشغيل**، ويدعم `net45` حتى `net11`، و**جاهز لـ NativeAOT** على `net8.0+`. يشترك PrestoDB وTrino في حزمة واحدة؛ ويبدّل `Protocol=Trino` (أو `TrinoHeaders=true`) رؤوس الطلبات.
 
-> **حالة المشروع**: تم التنفيذ والاختبار — مشغّل ADO.NET الأساسي مع موفري EF Core وEF6 للقراءة فقط، تُبنى كثلاث حزم NuGet ويُنشرها خط إصدار واحد. تنجح 484 اختبار وحدة أساسي واختبارات موفري EF والتكامل الفعلي مع Trino/PrestoDB؛ ولم يتبقَّ سوى Spooling (مؤجّل). راجع [قائمة الوظائف](Doc/功能清单.md).
+> **حالة المشروع**: تم التنفيذ والاختبار — مشغّل ADO.NET الأساسي مع موفري EF Core وEF6 للقراءة فقط، تُبنى كثلاث حزم NuGet ويُنشرها خط إصدار واحد. تنجح 503 اختبار وحدة أساسي واختبارات موفري EF والتكامل الفعلي مع Trino/PrestoDB؛ ويغطي Spooling مقاطع JSON غير المضغوطة ويعود تلقائيًا إلى البروتوكول المباشر بخلاف ذلك. راجع [قائمة الوظائف](Doc/功能清单.md).
 
 **المحتويات**: [البدء السريع](#البدء-السريع) · [لماذا NewLife.Presto](#لماذا-newlifepresto) · [الميزات الرئيسية](#الميزات-الرئيسية) · [دعم المنصات](#دعم-المنصات) · [الترجمة](#الترجمة) · [التوثيق](#التوثيق) · [المساهمة](#المساهمة) · [خريطة المنظومة](#خريطة-المنظومة) · [الفريق](#الفريق) · [الترخيص](#الترخيص)
 
@@ -50,11 +50,18 @@ var count = await cmd.ExecuteScalarAsync();
 ```
 ```csharp
 // Entity Framework Core (read-only)
+using Microsoft.EntityFrameworkCore;
+using NewLife.Presto.EntityFrameworkCore;
+
 var options = new DbContextOptionsBuilder<MyDbContext>()
     .UsePresto("Host=localhost;Port=8080;Catalog=hive;Schema=default;User=test")
     .Options;
-
+```
+```csharp
 // Entity Framework 6 (read-only)
+using System.Data.Entity;
+using NewLife.Presto.EntityFramework;
+
 DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
 ```
 

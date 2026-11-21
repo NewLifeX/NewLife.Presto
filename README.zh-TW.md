@@ -17,7 +17,7 @@
 
 **NewLife.Presto** 是新生命開發團隊出品的純 C# PrestoDB / Trino ADO.NET 驅動程式。它使用官方 HTTP REST v1 用戶端通訊協定，僅依賴 `NewLife.Core`，**零第三方相依**，內建 **33 種執行階段語言**，目標框架涵蓋 `net45` ~ `net11`，`net8.0+` **支援 NativeAOT**。PrestoDB 與 Trino 共用一個套件，透過 `Protocol=Trino`（或 `TrinoHeaders=true`）切換要求標頭。
 
-> **專案狀態**：已實作並通過測試——核心 ADO.NET 驅動 + 唯讀的 EF Core 與 EF6 Provider，建置為三個 NuGet 套件並由同一發佈流程打包推送。484 項核心單元測試、EF Provider 測試與真實 Trino/PrestoDB 整合全部通過；僅 Spooling 暫緩。見[功能清單](Doc/功能清单.md)。
+> **專案狀態**：已實作並通過測試——核心 ADO.NET 驅動 + 唯讀的 EF Core 與 EF6 Provider，建置為三個 NuGet 套件並由同一發行流程打包推送。503 項核心單元測試、EF Provider 測試與真實 Trino/PrestoDB 整合全部通過；Spooling 涵蓋未壓縮 JSON 分段，其餘編碼自動回退直接協定。見[功能清單](Doc/功能清单.md)。
 
 **目錄**: [快速開始](#快速開始) · [為什麼選擇 NewLife.Presto](#為什麼選擇-newlifepresto) · [主要功能](#主要功能) · [平台支援](#平台支援) · [多語言](#多語言) · [文件](#文件) · [參與貢獻](#參與貢獻) · [生態版圖](#生態版圖) · [新生命開發團隊](#新生命開發團隊) · [授權](#授權)
 
@@ -50,11 +50,18 @@ var count = await cmd.ExecuteScalarAsync();
 ```
 ```csharp
 // Entity Framework Core (read-only)
+using Microsoft.EntityFrameworkCore;
+using NewLife.Presto.EntityFrameworkCore;
+
 var options = new DbContextOptionsBuilder<MyDbContext>()
     .UsePresto("Host=localhost;Port=8080;Catalog=hive;Schema=default;User=test")
     .Options;
-
+```
+```csharp
 // Entity Framework 6 (read-only)
+using System.Data.Entity;
+using NewLife.Presto.EntityFramework;
+
 DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
 ```
 

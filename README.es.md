@@ -17,7 +17,7 @@
 
 **NewLife.Presto** es un controlador ADO.NET en C# puro para PrestoDB y Trino del equipo NewLife. Usa el protocolo cliente HTTP REST v1 oficial, depende solo de `NewLife.Core` con **cero dependencias de terceros**, incluye **33 idiomas de ejecución**, es compatible con `net45` a `net11` y está **listo para NativeAOT** en `net8.0+`. PrestoDB y Trino comparten un paquete; `Protocol=Trino` (o `TrinoHeaders=true`) cambia los encabezados de solicitud.
 
-> **Estado del proyecto**: implementado y probado — controlador ADO.NET principal más proveedores EF Core y EF6 de solo lectura, entregados como tres paquetes NuGet por el mismo flujo de publicación. Pasan 484 pruebas unitarias del núcleo, las de los proveedores EF y la integración real con Trino/PrestoDB; solo queda Spooling (aplazado). Ver la [lista de funciones](Doc/功能清单.md).
+> **Estado del proyecto**: implementado y probado — controlador ADO.NET principal más proveedores EF Core y EF6 de solo lectura, entregados como tres paquetes NuGet por el mismo flujo de publicación. Pasan 503 pruebas unitarias del núcleo, las de los proveedores EF y la integración real con Trino/PrestoDB; Spooling cubre segmentos JSON sin comprimir y, en otro caso, vuelve al protocolo directo. Ver la [lista de funciones](Doc/功能清单.md).
 
 **Contenido**: [Inicio rápido](#inicio-rápido) · [Por qué NewLife.Presto](#por-qué-newlifepresto) · [Funciones principales](#funciones-principales) · [Compatibilidad de plataformas](#compatibilidad-de-plataformas) · [Localización](#localización) · [Documentación](#documentación) · [Contribuir](#contribuir) · [Mapa del ecosistema](#mapa-del-ecosistema) · [Equipo](#equipo) · [Licencia](#licencia)
 
@@ -50,11 +50,18 @@ var count = await cmd.ExecuteScalarAsync();
 ```
 ```csharp
 // Entity Framework Core (read-only)
+using Microsoft.EntityFrameworkCore;
+using NewLife.Presto.EntityFrameworkCore;
+
 var options = new DbContextOptionsBuilder<MyDbContext>()
     .UsePresto("Host=localhost;Port=8080;Catalog=hive;Schema=default;User=test")
     .Options;
-
+```
+```csharp
 // Entity Framework 6 (read-only)
+using System.Data.Entity;
+using NewLife.Presto.EntityFramework;
+
 DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
 ```
 

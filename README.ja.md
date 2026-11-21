@@ -17,7 +17,7 @@
 
 **NewLife.Presto** は、NewLife チームによる PrestoDB / Trino 用の純 C# ADO.NET ドライバーです。公式の HTTP REST v1 クライアント プロトコルを使用し、`NewLife.Core` のみに依存する **サードパーティ依存ゼロ** のドライバーです。**33 の実行時言語** を内蔵し、`net45` から `net11` までを対象とし、`net8.0+` で **NativeAOT に対応** します。PrestoDB と Trino は 1 つのパッケージを共用し、`Protocol=Trino`（または `TrinoHeaders=true`）で要求ヘッダーを切り替えます。
 
-> **プロジェクトの状態**：実装・テスト完了——コア ADO.NET ドライバーと読み取り専用の EF Core / EF6 Provider を 3 つの NuGet パッケージとして同一リリース パイプラインで提供。コア単体テスト 484 件、EF Provider テスト、実機 Trino/PrestoDB 統合がすべて成功。残るは Spooling（保留）のみ。[機能リスト](Doc/功能清单.md)を参照。
+> **プロジェクトの状態**：実装・テスト完了——コア ADO.NET ドライバーと読み取り専用の EF Core / EF6 Provider を 3 つの NuGet パッケージとして同一リリース パイプラインで提供。コア単体テスト 503 件、EF Provider テスト、実機 Trino/PrestoDB 統合がすべて成功。Spooling は非圧縮 JSON セグメントに対応し、それ以外は直接プロトコルへフォールバックします。[機能リスト](Doc/功能清单.md)を参照。
 
 **目次**: [クイック スタート](#クイック-スタート) · [NewLife.Presto を選ぶ理由](#newlifepresto-を選ぶ理由) · [主な機能](#主な機能) · [プラットフォーム対応](#プラットフォーム対応) · [多言語](#多言語) · [ドキュメント](#ドキュメント) · [コントリビューション](#コントリビューション) · [エコシステムマップ](#エコシステムマップ) · [チーム](#チーム) · [ライセンス](#ライセンス)
 
@@ -50,11 +50,18 @@ var count = await cmd.ExecuteScalarAsync();
 ```
 ```csharp
 // Entity Framework Core (read-only)
+using Microsoft.EntityFrameworkCore;
+using NewLife.Presto.EntityFrameworkCore;
+
 var options = new DbContextOptionsBuilder<MyDbContext>()
     .UsePresto("Host=localhost;Port=8080;Catalog=hive;Schema=default;User=test")
     .Options;
-
+```
+```csharp
 // Entity Framework 6 (read-only)
+using System.Data.Entity;
+using NewLife.Presto.EntityFramework;
+
 DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
 ```
 

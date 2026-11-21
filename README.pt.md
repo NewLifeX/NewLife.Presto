@@ -17,7 +17,7 @@
 
 **NewLife.Presto** é um driver ADO.NET em C# puro para PrestoDB e Trino da equipe NewLife. Ele usa o protocolo cliente HTTP REST v1 oficial, depende apenas de `NewLife.Core` com **zero dependências de terceiros**, inclui **33 idiomas de execução**, oferece suporte de `net45` a `net11` e está **pronto para NativeAOT** em `net8.0+`. PrestoDB e Trino compartilham um único pacote; `Protocol=Trino` (ou `TrinoHeaders=true`) alterna os cabeçalhos de solicitação.
 
-> **Estado do projeto**: implementado e testado — driver ADO.NET principal mais provedores EF Core e EF6 somente leitura, entregues como três pacotes NuGet pelo mesmo pipeline de publicação. 484 testes unitários do núcleo, testes dos provedores EF e integração real com Trino/PrestoDB passam; resta apenas Spooling (adiado). Ver a [lista de funções](Doc/功能清单.md).
+> **Estado do projeto**: implementado e testado — driver ADO.NET principal mais provedores EF Core e EF6 somente leitura, entregues como três pacotes NuGet pelo mesmo pipeline de publicação. 503 testes unitários do núcleo, testes dos provedores EF e integração real com Trino/PrestoDB passam; o Spooling cobre segmentos JSON não compactados e, caso contrário, recorre ao protocolo direto. Ver a [lista de funções](Doc/功能清单.md).
 
 **Conteúdo**: [Início rápido](#início-rápido) · [Por que NewLife.Presto](#por-que-newlifepresto) · [Principais recursos](#principais-recursos) · [Suporte de plataformas](#suporte-de-plataformas) · [Localização](#localização) · [Documentação](#documentação) · [Contribuição](#contribuição) · [Mapa do ecossistema](#mapa-do-ecossistema) · [Equipe](#equipe) · [Licença](#licença)
 
@@ -50,11 +50,18 @@ var count = await cmd.ExecuteScalarAsync();
 ```
 ```csharp
 // Entity Framework Core (read-only)
+using Microsoft.EntityFrameworkCore;
+using NewLife.Presto.EntityFrameworkCore;
+
 var options = new DbContextOptionsBuilder<MyDbContext>()
     .UsePresto("Host=localhost;Port=8080;Catalog=hive;Schema=default;User=test")
     .Options;
-
+```
+```csharp
 // Entity Framework 6 (read-only)
+using System.Data.Entity;
+using NewLife.Presto.EntityFramework;
+
 DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
 ```
 
