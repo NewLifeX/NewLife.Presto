@@ -314,11 +314,13 @@ public class PrestoDataReaderTests
         var command = new PrestoCommand("select 1", connection);
         using var reader = await command.ExecuteReaderAsync(CancellationToken.None);
 
+        using var cts = new CancellationTokenSource();
+
         Assert.False(reader.NextResult());
         Assert.False(await reader.NextResultAsync(CancellationToken.None));
-        Assert.True(await reader.ReadAsync(CancellationToken.None));
+        Assert.True(await reader.ReadAsync(cts.Token));
         Assert.Equal(1, reader.GetInt32(0));
-        Assert.True(await reader.ReadAsync(CancellationToken.None));
+        Assert.True(await reader.ReadAsync(cts.Token));
         Assert.Equal(2, reader.GetInt32(0));
         Assert.False(await reader.ReadAsync(CancellationToken.None));
     }
@@ -593,6 +595,38 @@ public class PrestoDataReaderTests
 
         var binary = new PrestoColumn { Name = "bin", Type = "varbinary", FieldType = typeof(Byte[]) };
         Assert.Equal(new Byte[] { 1, 2 }, PrestoValueConverter.Convert(new Byte[] { 1, 2 }, binary));
+        Assert.Equal(new Byte[] { 1, 2 }, PrestoValueConverter.Convert("AQI=", binary));
         Assert.Throws<PrestoException>(() => PrestoValueConverter.Convert("%%%", binary));
+
+        var text = new PrestoColumn { Name = "s", Type = "varchar", FieldType = typeof(String) };
+        Assert.Equal("123", PrestoValueConverter.Convert(123, text));
+        Assert.Equal("True", PrestoValueConverter.Convert(true, text));
+
+        Assert.True((Boolean)PrestoValueConverter.Convert("true", boolean));
+        Assert.False((Boolean)PrestoValueConverter.Convert("0", boolean));
+        Assert.Throws<PrestoException>(() => PrestoValueConverter.Convert("2020-13-99", date));
+    }
+
+    [Fact(DisplayName = "数字快速转换覆盖全部目标类型")]
+    public void NumberFastPaths()
+    {
+        static PrestoColumn Column(Type type) => new() { Name = "n", Type = "n", FieldType = type };
+
+        Assert.Equal(2L, PrestoValueConverter.Convert(2, Column(typeof(Int64))));
+        Assert.Equal(2d, PrestoValueConverter.Convert(2, Column(typeof(Double))));
+        Assert.Equal(2f, PrestoValueConverter.Convert(2, Column(typeof(Single))));
+        Assert.Equal(2m, PrestoValueConverter.Convert(2, Column(typeof(Decimal))));
+        Assert.Equal((Int16)2, PrestoValueConverter.Convert(2, Column(typeof(Int16))));
+        Assert.Equal((SByte)2, PrestoValueConverter.Convert(2, Column(typeof(SByte))));
+
+        Assert.Equal(2, PrestoValueConverter.Convert(2L, Column(typeof(Int32))));
+        Assert.Equal(2d, PrestoValueConverter.Convert(2L, Column(typeof(Double))));
+        Assert.Equal(2f, PrestoValueConverter.Convert(2L, Column(typeof(Single))));
+        Assert.Equal(2m, PrestoValueConverter.Convert(2L, Column(typeof(Decimal))));
+        Assert.Equal((Int16)2, PrestoValueConverter.Convert(2L, Column(typeof(Int16))));
+        Assert.Equal((SByte)2, PrestoValueConverter.Convert(2L, Column(typeof(SByte))));
+
+        Assert.Throws<PrestoException>(() => PrestoValueConverter.Convert(Int64.MaxValue, Column(typeof(Int32))));
+        Assert.Throws<PrestoException>(() => PrestoValueConverter.Convert(300, Column(typeof(SByte))));
     }
 }

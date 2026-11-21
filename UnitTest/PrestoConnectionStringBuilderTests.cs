@@ -459,4 +459,24 @@ public class PrestoConnectionStringBuilderTests
         Assert.Throws<ArgumentException>(() => builder.MaxRetries = -1);
         Assert.Throws<ArgumentException>(() => builder.RetryInterval = -1);
     }
+
+    /// <summary>归一化只执行一次，后续写入别名仍能生效</summary>
+    [Fact(DisplayName = "归一化缓存后别名仍生效")]
+    public void NormalizeAfterMutation()
+    {
+        var builder = new PrestoConnectionStringBuilder("Database=cat1");
+        Assert.Equal("cat1", builder.Catalog);
+
+        // 归一化缓存后新增别名键，下次读取仍能识别
+        builder["Server"] = "db2";
+        Assert.Equal("db2", builder.Host);
+
+        builder["Owner"] = "sch2";
+        Assert.Equal("sch2", builder.Schema);
+
+        builder.ConnectionString = "Data Source=db3;Initial Catalog=cat3;Owner=sch3";
+        Assert.Equal("db3", builder.Host);
+        Assert.Equal("cat3", builder.Catalog);
+        Assert.Equal("sch3", builder.Schema);
+    }
 }

@@ -22,6 +22,17 @@ public class PrestoInfrastructureTests
         Assert.Null(await PrestoAuthProvider.GetAuthorizationAsync(null!, null, null, CancellationToken.None));
     }
 
+    [Fact(DisplayName = "Basic 认证生成标准头")]
+    public async Task BasicAuth()
+    {
+        var options = PrestoConnectionOptions.From(new PrestoConnectionStringBuilder("Host=localhost;User=u;Password=p"));
+
+        var header = await PrestoAuthProvider.GetAuthorizationAsync(options, null, null, CancellationToken.None);
+
+        Assert.Equal("Basic " + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("u:p")), header);
+        Assert.Equal(header, PrestoAuthProvider.BuildBasic(options));
+    }
+
     [Fact(DisplayName = "JWT 回调返回空时回退配置令牌")]
     public async Task JwtFallback()
     {

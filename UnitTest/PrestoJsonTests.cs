@@ -357,4 +357,225 @@ public class PrestoJsonTests
         Assert.Empty(results.Data[0]);
         Assert.Equal("a", results.Data[1][0]);
     }
+
+    [Fact(DisplayName = "数字单元格按列类型直出")]
+    public void NumbersUseColumnTypes()
+    {
+        const String json = """
+        {
+          "columns": [
+            { "name": "b", "type": "bigint" },
+            { "name": "i", "type": "integer" },
+            { "name": "d", "type": "double" },
+            { "name": "s", "type": "varchar" }
+          ],
+          "data": [ [1, 2, 1.5, "x"], [2147483648, null, 2, null] ]
+        }
+        """;
+
+        var results = PrestoJson.ParseResults(json);
+
+        Assert.IsType<Int64>(results.Data[0][0]);
+        Assert.IsType<Int32>(results.Data[0][1]);
+        Assert.IsType<Double>(results.Data[0][2]);
+        Assert.Equal("x", results.Data[0][3]);
+        Assert.Equal(2147483648L, results.Data[1][0]);
+        Assert.Null(results.Data[1][1]);
+        Assert.Equal(2d, results.Data[1][2]);
+    }
+
+    [Fact(DisplayName = "JSON 单元格保留嵌套结构")]
+    public void NestedJsonCells()
+    {
+        const String json = """{ "data": [ [ { "a": 1 }, [ 1, "x" ], null ] ] }""";
+
+        var results = PrestoJson.ParseResults(json);
+
+        var dic = Assert.IsAssignableFrom<IDictionary<String, Object?>>(results.Data[0][0]);
+        Assert.Equal(1, dic["a"]);
+        var list = Assert.IsAssignableFrom<IList<Object?>>(results.Data[0][1]);
+        Assert.Equal(1, list[0]);
+        Assert.Equal("x", list[1]);
+        Assert.Null(results.Data[0][2]);
+    }
+
+    [Fact(DisplayName = "统计原始对象按需解析且保留未知字段")]
+    public void StatsRawIsLazyButComplete()
+    {
+        const String json = """{ "stats": { "state": "FINISHED", "processedRows": 3, "queuedTimeMillis": 5, "unknown": "kept" } }""";
+
+        var stats = PrestoJson.ParseResults(json).Stats!;
+
+        Assert.Equal("FINISHED", stats.State);
+        Assert.Equal(3, stats.ProcessedRows);
+        Assert.Equal(5, stats.QueuedTimeMillis);
+        Assert.Equal("kept", stats.Raw!["unknown"]);
+    }
+
+    [Fact(DisplayName = "UTF-8 字节解析支持 BOM 与转义")]
+    public void Utf8BomAndEscapes()
+    {
+        var bytes = new Byte[] { 0xEF, 0xBB, 0xBF }.Concat(System.Text.Encoding.UTF8.GetBytes("""{ "id": "q\u0031", "data": [ [ "a\u00e9" ] ] }""")).ToArray();
+
+        var results = PrestoJson.ParseResultsUtf8(bytes);
+
+        Assert.Equal("q1", results.Id);
+        Assert.Equal("aé", results.Data[0][0]);
+    }
+
+    [Fact(DisplayName = "空字节响应抛出驱动异常")]
+    public void Utf8EmptyBody()
+    {
+        Assert.Throws<PrestoException>(() => PrestoJson.ParseResultsUtf8(Array.Empty<Byte>()));
+        Assert.Throws<PrestoException>(() => PrestoJson.ParseResultsUtf8("  "u8.ToArray()));
+        Assert.Throws<PrestoException>(() => PrestoJson.ParseResultsUtf8("[]"u8.ToArray()));
+        Assert.Empty(PrestoJson.ParseRowsUtf8(Array.Empty<Byte>()));
+        Assert.Throws<PrestoException>(() => PrestoJson.ParseRowsUtf8("{}"u8.ToArray()));
+
+        // 两字节正文覆盖 BOM 长度判断的短路分支
+        Assert.Null(PrestoJson.ParseResultsUtf8("{}"u8.ToArray()).Id);
+    }
+
+    [Fact(DisplayName = "字段类型不符合预期时宽容降级")]
+    public void StreamingTolerantFields()
+    {
+        const String json = """
+        { "data": 5, "warnings": 1, "columns": 2, "error": "e", "stats": 3, "id": 5, "updateType": true, "updateCount": 1.5 }
+        """;
+
+        var results = PrestoJson.ParseResults(json);
+
+        Assert.Equal("5", results.Id);
+        Assert.Equal("True", results.UpdateType);
+        Assert.Equal(1L, results.UpdateCount);
+        Assert.Empty(results.Columns);
+        Assert.Empty(results.Data);
+        Assert.Empty(results.Warnings);
+        Assert.Null(results.Error);
+        Assert.Null(results.Stats);
+    }
+
+    [Fact(DisplayName = "元数据字符串兼容数字与布尔")]
+    public void StreamingTextValues()
+    {
+        const String json = """{ "id": 12, "nextUri": true, "columns": [ { "name": true, "type": false } ], "updateType": { "a": 1 } }""";
+
+        var results = PrestoJson.ParseResults(json);
+
+        Assert.Equal("12", results.Id);
+        Assert.Equal("True", results.NextUri);
+        Assert.Equal("True", results.Columns[0].Name);
+        Assert.Equal("False", results.Columns[0].Type);
+        Assert.Null(results.UpdateType);
+    }
+
+    [Fact(DisplayName = "updateCount 兼容字符串与非法值")]
+    public void StreamingUpdateCountVariants()
+    {
+        Assert.Equal(7L, PrestoJson.ParseResults("""{ "updateCount": "7" }""").UpdateCount);
+        Assert.Null(PrestoJson.ParseResults("""{ "updateCount": true }""").UpdateCount);
+    }
+
+    [Fact(DisplayName = "类型签名与警告字段宽容解析")]
+    public void StreamingColumnsAndWarningsDetails()
+    {
+        const String json = """
+        {
+          "columns": [
+            { "name": "a", "typeSignature": 5 },
+            { "name": "b", "typeSignature": { "rawType": "integer", "arguments": [] }, "extra": 1 },
+            { "name": "c", "typeSignature": { "other": 1 } },
+            { "name": "d", "type": "bigint", "typeSignature": { "rawType": "integer" } }
+          ],
+          "warnings": [ { "message": "w", "warningCode": "7", "extra": { "x": 1 } } ]
+        }
+        """;
+
+        var results = PrestoJson.ParseResults(json);
+
+        Assert.Equal(4, results.Columns.Count);
+        Assert.Equal(String.Empty, results.Columns[0].Type);
+        Assert.Equal("integer", results.Columns[1].Type);
+        Assert.Equal(String.Empty, results.Columns[2].Type);
+        Assert.Equal("bigint", results.Columns[3].Type);
+        Assert.Equal(7, results.Warnings[0].WarningCode);
+    }
+
+    [Fact(DisplayName = "无列定义时数字按 JSON 语义解析")]
+    public void StreamingGenericNumbers()
+    {
+        const String json = """{ "data": [ [ 1, 2147483648, 1.5, true, false, null, 1e400 ] ] }""";
+
+        var row = PrestoJson.ParseResults(json).Data[0];
+
+        Assert.IsType<Int32>(row[0]);
+        Assert.IsType<Int64>(row[1]);
+        Assert.IsType<Double>(row[2]);
+        Assert.Equal(true, row[3]);
+        Assert.Equal(false, row[4]);
+        Assert.Null(row[5]);
+        Assert.Equal(Double.PositiveInfinity, row[6]);
+    }
+
+    [Fact(DisplayName = "数据行与列数不一致时保留实际单元格")]
+    public void StreamingRowArityMismatch()
+    {
+        const String json = """
+        {
+          "columns": [ { "name": "a", "type": "integer" }, { "name": "b", "type": "integer" } ],
+          "data": [ [ 1, 2, 3 ], [ 4 ] ]
+        }
+        """;
+
+        var results = PrestoJson.ParseResults(json);
+
+        Assert.Equal(2, results.Data[0].Count);
+        Assert.Single(results.Data[1]);
+        Assert.Equal(4, results.Data[1][0]);
+    }
+
+    [Fact(DisplayName = "空行与分片计数越界按默认值处理")]
+    public void StreamingRowAndStatsEdges()
+    {
+        const String json = """
+        {
+          "columns": [ { "name": "a", "type": "integer" }, { "name": "b", "type": "integer" } ],
+          "data": [ [] ],
+          "stats": { "totalSplits": 5000000000, "completedSplits": -1 }
+        }
+        """;
+
+        var results = PrestoJson.ParseResults(json);
+
+        Assert.Empty(results.Data[0]);
+        Assert.Equal(0, results.Stats!.TotalSplits);
+        Assert.Equal(-1, results.Stats.CompletedSplits);
+    }
+
+    [Fact(DisplayName = "数据为对象时按 Spooling 描述解析")]
+    public void StreamingSpooledDataObject()
+    {
+        var results = PrestoJson.ParseResults("""{ "data": { "encoding": "json" } }""");
+
+        Assert.Equal("json", results.DataEncoding);
+        Assert.Empty(results.Segments);
+        Assert.Empty(results.Data);
+    }
+
+    [Fact(DisplayName = "updateCount 非法字符串返回空")]
+    public void StreamingUpdateCountInvalid()
+    {
+        Assert.Null(PrestoJson.ParseResults("""{ "updateCount": "abc" }""").UpdateCount);
+    }
+
+    [Fact(DisplayName = "统计 Raw 支持字典与延迟解析两种来源")]
+    public void StatsRawSources()
+    {
+        var dic = new Dictionary<String, Object?> { ["state"] = "X" };
+        var direct = PrestoJson.ParseStats(dic)!;
+        Assert.Same(dic, direct.Raw);
+
+        var lazy = PrestoJson.ParseResults("""{ "stats": { "state": "Y" } }""").Stats!;
+        Assert.Equal("Y", lazy.Raw!["state"]);
+    }
 }
