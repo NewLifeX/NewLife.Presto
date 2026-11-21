@@ -55,3 +55,4 @@
 "The OAuth2 token endpoint returned an empty response.": "The OAuth2 token endpoint returned an empty response."
 "The OAuth2 token endpoint returned no access token.": "The OAuth2 token endpoint returned no access token."
 "Query id cannot be empty.": "Query id cannot be empty."
+"Unsupported complex type mode: {0}. Use String or Structured.": "Unsupported complex type mode: {0}. Use String or Structured."

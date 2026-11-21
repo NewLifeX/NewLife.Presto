@@ -52,6 +52,9 @@ internal sealed class PrestoConnectionOptions
     /// <summary>OAuth2 授权范围</summary>
     public String Scope { get; init; } = "";
 
+    /// <summary>复杂类型取值模式</summary>
+    public PrestoComplexType ComplexTypes { get; init; }
+
     /// <summary>协议类型</summary>
     public PrestoProtocol Protocol { get; init; }
 
@@ -139,6 +142,7 @@ internal sealed class PrestoConnectionOptions
             ClientId = builder.ClientId,
             ClientSecret = builder.ClientSecret,
             Scope = builder.Scope,
+            ComplexTypes = builder.ComplexTypes,
             Protocol = builder.Protocol,
             TimeZone = builder.TimeZone,
             Language = builder.Language,

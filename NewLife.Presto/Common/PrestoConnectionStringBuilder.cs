@@ -24,6 +24,7 @@ public sealed class PrestoConnectionStringBuilder : DbConnectionStringBuilder
     private static readonly String[] _clientIdKeys = ["ClientId", "OAuthClientId", "AppKey", "AppId"];
     private static readonly String[] _clientSecretKeys = ["ClientSecret", "OAuthClientSecret", "AppSecret"];
     private static readonly String[] _scopeKeys = ["Scope", "OAuthScope"];
+    private static readonly String[] _complexTypesKeys = ["ComplexTypes", "ComplexType", "StructuredTypes"];
     #endregion
 
     #region 构造
@@ -190,6 +191,20 @@ public sealed class PrestoConnectionStringBuilder : DbConnectionStringBuilder
     {
         get => GetString("Scope") ?? String.Empty;
         set => this["Scope"] = value;
+    }
+
+    /// <summary>复杂类型取值模式。默认 String，可选 Structured</summary>
+    public PrestoComplexType ComplexTypes
+    {
+        get
+        {
+            var value = GetString("ComplexTypes");
+            if (value.IsNullOrEmpty() || value.EqualIgnoreCase("String", "Text", "Raw")) return PrestoComplexType.String;
+            if (value.EqualIgnoreCase("Structured", "Object", "Parse")) return PrestoComplexType.Structured;
+
+            throw new ArgumentException(Localization.Translate("Unsupported complex type mode: {0}. Use String or Structured.", value), nameof(ComplexTypes));
+        }
+        set => this["ComplexTypes"] = value.ToString();
     }
 
     /// <summary>协议类型。默认 PrestoDB</summary>
@@ -413,6 +428,7 @@ public sealed class PrestoConnectionStringBuilder : DbConnectionStringBuilder
         _ = RetryInterval;
         _ = SessionProperties;
         _ = CustomHeaders;
+        _ = ComplexTypes;
 
         if (Auth == PrestoAuth.Jwt && AccessToken.IsNullOrEmpty())
             throw new ArgumentException(Localization.Translate("AccessToken is required when Auth=JWT."), nameof(AccessToken));
@@ -445,6 +461,7 @@ public sealed class PrestoConnectionStringBuilder : DbConnectionStringBuilder
             Move(_clientIdKeys, "ClientId");
             Move(_clientSecretKeys, "ClientSecret");
             Move(_scopeKeys, "Scope");
+            Move(_complexTypesKeys, "ComplexTypes");
             Move(["ApplicationName"], "Source");
             Move(["BasePath"], "Path");
             Move(["HttpProxy"], "Proxy");

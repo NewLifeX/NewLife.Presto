@@ -26,3 +26,13 @@ public enum PrestoAuth
     /// <summary>OAuth2 客户端凭据。用 TokenEndpoint + ClientId + ClientSecret 换取 Bearer 令牌</summary>
     OAuth2 = 3,
 }
+
+/// <summary>复杂类型取值模式</summary>
+public enum PrestoComplexType
+{
+    /// <summary>原始字符串。array/map/row 保持服务器返回的 JSON 文本</summary>
+    String = 0,
+
+    /// <summary>结构化对象。array→Object[]、map→IDictionary、row→Object[]</summary>
+    Structured = 1,
+}

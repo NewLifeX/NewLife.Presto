@@ -62,17 +62,18 @@ public static class PrestoTypeMapper
 
     /// <summary>获取类型对应的 .NET 类型</summary>
     /// <param name="type">类型签名</param>
+    /// <param name="structured">复杂类型是否返回结构化对象。true 时 array/map/row 返回 <see cref="Object"/></param>
     /// <returns>.NET 类型；未知类型返回 <see cref="String"/></returns>
     [return: System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicFields | System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicProperties)]
-    public static Type GetFieldType(String? type)
+    public static Type GetFieldType(String? type, Boolean structured = false)
     {
         if (type.IsNullOrEmpty()) return typeof(String);
 
         var text = type.Trim().ToLowerInvariant();
         var hasTimeZone = text.Contains(" with time zone");
 
-        // 复杂类型首版按原始字符串返回
-        if (text.StartsWith("array") || text.StartsWith("map") || text.StartsWith("row")) return typeof(String);
+        // 复杂类型默认按原始字符串返回，开启结构化后返回 Object
+        if (text.StartsWith("array") || text.StartsWith("map") || text.StartsWith("row")) return structured ? typeof(Object) : typeof(String);
 
         if (text.StartsWith("interval")) return text.Contains("day") ? typeof(TimeSpan) : typeof(String);
 

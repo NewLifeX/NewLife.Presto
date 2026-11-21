@@ -54,8 +54,9 @@ internal static class PrestoJson
 
     /// <summary>解析单页查询结果</summary>
     /// <param name="json">JSON 文本</param>
+    /// <param name="structured">复杂类型是否返回结构化对象</param>
     /// <returns>查询结果</returns>
-    public static PrestoQueryResults ParseResults(String? json)
+    public static PrestoQueryResults ParseResults(String? json, Boolean structured = false)
     {
         var dic = ParseObject(json) ?? throw new PrestoException(Localization.Translate("The server returned an empty response."));
 
@@ -64,7 +65,7 @@ internal static class PrestoJson
             Id = GetString(dic, "id"),
             InfoUri = GetString(dic, "infoUri"),
             NextUri = GetString(dic, "nextUri"),
-            Columns = ParseColumns(dic.TryGetValue("columns", out var columns) ? columns : null),
+            Columns = ParseColumns(dic.TryGetValue("columns", out var columns) ? columns : null, structured),
             Data = ParseData(dic.TryGetValue("data", out var data) ? data : null),
             Stats = ParseStats(dic.TryGetValue("stats", out var stats) ? stats : null),
             Warnings = ParseWarnings(dic.TryGetValue("warnings", out var warnings) ? warnings : null),
@@ -200,7 +201,7 @@ internal static class PrestoJson
         return list;
     }
 
-    private static List<PrestoColumn> ParseColumns(Object? value)
+    private static List<PrestoColumn> ParseColumns(Object? value, Boolean structured)
     {
         var list = new List<PrestoColumn>();
         if (AsList(value) is not { } items) return list;
@@ -218,7 +219,7 @@ internal static class PrestoJson
             {
                 Name = GetString(dic, "name") ?? String.Empty,
                 Type = type,
-                FieldType = PrestoTypeMapper.GetFieldType(type),
+                FieldType = PrestoTypeMapper.GetFieldType(type, structured),
             });
         }
 

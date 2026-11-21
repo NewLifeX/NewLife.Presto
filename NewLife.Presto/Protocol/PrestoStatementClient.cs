@@ -76,7 +76,7 @@ internal sealed class PrestoStatementClient
 
             if (!response.IsSuccessStatusCode) throw CreateHttpException(uri, response, body);
 
-            var results = PrestoJson.ParseResults(body);
+            var results = PrestoJson.ParseResults(body, _options.ComplexTypes == PrestoComplexType.Structured);
             Apply(results);
 
             if (results.Error != null) throw CreateQueryException(results);
@@ -123,7 +123,7 @@ internal sealed class PrestoStatementClient
 
                 if (!response.IsSuccessStatusCode) throw CreateHttpException(uri, response, body);
 
-                var results = PrestoJson.ParseResults(body);
+                var results = PrestoJson.ParseResults(body, _options.ComplexTypes == PrestoComplexType.Structured);
                 Apply(results);
 
                 if (results.Error != null) throw CreateQueryException(results);

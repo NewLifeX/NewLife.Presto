@@ -32,6 +32,7 @@ public class IntegrationTests
         Paging(connection);
         Metadata(connection);
         Diagnostics(connection);
+        ComplexTypes(connection);
         ErrorMapping(connection);
     }
 
@@ -110,6 +111,36 @@ public class IntegrationTests
 
         // 部分发行版限制查询列表接口，返回空集合也算可用
         Assert.NotNull(connection.GetQueries());
+    }
+
+    private static void ComplexTypes(PrestoConnection connection)
+    {
+        using var structured = new PrestoConnection(connection.ConnectionString + ";ComplexTypes=Structured");
+        structured.Open();
+
+        using (var command = structured.CreateCommand())
+        {
+            command.CommandText = "select array[1, 2, 3]";
+            var value = command.ExecuteScalar();
+            Assert.Equal(new Object?[] { 1, 2, 3 }, Assert.IsType<Object[]>(value));
+        }
+
+        using (var command = structured.CreateCommand())
+        {
+            command.CommandText = "select map(array['a'], array[1])";
+            var value = command.ExecuteScalar();
+            var map = Assert.IsAssignableFrom<IDictionary<String, Object?>>(value);
+            Assert.Equal(1, map["a"]);
+        }
+
+        using (var command = structured.CreateCommand())
+        {
+            command.CommandText = "select cast(row('alice', 30) as row(name varchar, age integer))";
+            var value = command.ExecuteScalar();
+            var row = Assert.IsType<Object[]>(value);
+            Assert.Equal("alice", row[0]);
+            Assert.Equal(30, row[1]);
+        }
     }
 
     private static void ErrorMapping(PrestoConnection connection)

@@ -593,6 +593,10 @@ internal static class PrestoValueConverter
         try
         {
             var fieldType = column.FieldType;
+
+            // 复杂类型在结构化模式下返回 Object[]/字典
+            if (fieldType == typeof(Object)) return PrestoComplexValueParser.Parse(value, PrestoTypeSignature.Parse(column.Type))!;
+
             if (fieldType == typeof(String)) return PrestoJson.ToText(value)!;
             if (fieldType == typeof(Boolean)) return ToBoolean(value);
             if (fieldType == typeof(SByte)) return System.Convert.ToSByte(PrestoJson.ToText(value)!, CultureInfo.InvariantCulture);
@@ -622,6 +626,22 @@ internal static class PrestoValueConverter
                     PrestoDiagnostics.Truncate(PrestoJson.ToText(value), 128)),
                 ex);
         }
+    }
+
+    /// <summary>按类型签名转换标量值，供复杂类型元素递归使用</summary>
+    /// <param name="value">原始值</param>
+    /// <param name="type">类型签名</param>
+    /// <returns>转换后的值</returns>
+    internal static Object ConvertScalar(Object value, String? type)
+    {
+        var column = new PrestoColumn
+        {
+            Name = String.Empty,
+            Type = type ?? String.Empty,
+            FieldType = PrestoTypeMapper.GetFieldType(type),
+        };
+
+        return Convert(value, column);
     }
 
     private static Boolean ToBoolean(Object value)

@@ -55,3 +55,4 @@
 "The OAuth2 token endpoint returned an empty response.": "OAuth2 令牌端点返回了空响应。"
 "The OAuth2 token endpoint returned no access token.": "OAuth2 令牌端点未返回访问令牌。"
 "Query id cannot be empty.": "查询编号不能为空。"
+"Unsupported complex type mode: {0}. Use String or Structured.": "不支持的复杂类型模式 {0}；请使用 String 或 Structured。"
