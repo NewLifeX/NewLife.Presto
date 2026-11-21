@@ -52,6 +52,37 @@ public class PrestoResponseBodyTests
         Assert.IsType<IOException>(ex.InnerException);
     }
 
+    [Fact(DisplayName = "零长度内容与重复文本解码")]
+    public async Task EmptyContentAndRepeatText()
+    {
+        using var zero = await PrestoResponseBody.ReadAsync(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(Array.Empty<Byte>()) }, CancellationToken.None);
+        Assert.Equal(String.Empty, zero.GetText());
+
+        using var body = await PrestoResponseBody.ReadAsync(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("""{"a":1}""", Encoding.UTF8, "application/json"),
+        }, CancellationToken.None);
+        Assert.Equal("""{"a":1}""", body.GetText());
+        Assert.Equal("""{"a":1}""", body.GetText());
+    }
+
+    [Fact(DisplayName = "异步读取异常保留原异常")]
+    public async Task ReadFailureAsync()
+    {
+        var handler = new FakePrestoHandler();
+        handler.Enqueue((request, token) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new ThrowingContent(),
+        }));
+
+        using var connection = TestHelper.CreateOpenConnection(handler);
+        using var command = connection.CreateCommand("select 1");
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => command.ExecuteScalarAsync());
+
+        Assert.IsType<IOException>(ex.InnerException);
+    }
+
     [Fact(DisplayName = "空响应体解析与重复释放")]
     public async Task EmptyBodyLifecycle()
     {
@@ -71,6 +102,9 @@ public class PrestoResponseBodyTests
     {
         protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) => stream.WriteAsync(data, 0, data.Length);
 
+        protected override void SerializeToStream(Stream stream, TransportContext? context, CancellationToken cancellationToken)
+            => stream.Write(data, 0, data.Length);
+
         protected override Boolean TryComputeLength(out Int64 length)
         {
             length = 0;
@@ -82,6 +116,9 @@ public class PrestoResponseBodyTests
     private sealed class ThrowingContent : HttpContent
     {
         protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) => Task.FromException(new IOException("boom"));
+
+        protected override void SerializeToStream(Stream stream, TransportContext? context, CancellationToken cancellationToken)
+            => throw new IOException("boom");
 
         protected override Boolean TryComputeLength(out Int64 length)
         {

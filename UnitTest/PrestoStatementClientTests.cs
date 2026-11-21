@@ -24,6 +24,133 @@ public class PrestoStatementClientTests
         return (new PrestoStatementClient(http, options, session), handler, session);
     }
 
+    [Fact(DisplayName = "同步请求超时映射为连接超时")]
+    public void SyncConnectionTimeout()
+    {
+        var handler = new FakePrestoHandler();
+        handler.EnqueueDelay(TimeSpan.FromSeconds(5), """{ "id": "q1", "columns": [], "data": [] }""");
+        using var connection = new PrestoConnection("Host=localhost;Port=8080;User=test;ConnectionTimeout=1;MaxRetries=0", handler);
+        connection.Open();
+        using var command = connection.CreateCommand("select 1");
+
+        var ex = Assert.Throws<PrestoException>(() => command.ExecuteScalar());
+
+        Assert.Equal(NewLife.Localization.Translate("Connection timeout of {0} seconds expired.", 1), ex.Message);
+    }
+
+    [Fact(DisplayName = "自定义处理器不支持同步时回退异步通道")]
+    public void SyncFallbackToAsyncHandler()
+    {
+        var handler = new AsyncOnlyHandler((request, token) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("""{ "columns": [{ "name": "n", "type": "integer" }], "data": [[1]] }""", Encoding.UTF8, "application/json"),
+        }));
+        using var connection = new PrestoConnection("Host=localhost;Port=8080;User=test;MaxRetries=0", handler);
+        connection.Open();
+        using var command = connection.CreateCommand("select 1");
+
+        Assert.Equal(1, Convert.ToInt32(command.ExecuteScalar()));
+    }
+
+    [Fact(DisplayName = "自定义处理器不支持同步轮询时回退异步通道")]
+    public void FetchFallbackToAsyncHandler()
+    {
+        var handler = new AsyncOnlyHandler((request, token) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("""{ "id": "q1", "columns": [{ "name": "n", "type": "integer" }], "data": [[1]] }""", Encoding.UTF8, "application/json"),
+        }));
+        var options = PrestoConnectionOptions.From(new PrestoConnectionStringBuilder("Host=localhost;Port=8080;User=test;Auth=None;MaxRetries=0"));
+        var session = new PrestoSessionState(options);
+        var http = new HttpClient(handler) { BaseAddress = options.BaseAddress };
+        var client = new PrestoStatementClient(http, options, session);
+
+        var results = client.Fetch("http://localhost:8080/v1/statement/q1/1", CancellationToken.None);
+
+        Assert.Single(results.Data);
+    }
+
+    private sealed class AsyncOnlyHandler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) => send(request, cancellationToken);
+    }
+
+    [Fact(DisplayName = "同步提交返回错误页抛出驱动异常")]
+    public void SubmitErrorSync()
+    {
+        var (client, handler, _) = CreateClient();
+        handler.EnqueueJson("""{ "id": "q1", "error": { "message": "bad", "errorCode": 1 } }""");
+
+        var ex = Assert.Throws<PrestoException>(() => client.Submit("select 1", CancellationToken.None));
+
+        Assert.Contains("bad", ex.Message);
+    }
+
+    [Fact(DisplayName = "同步轮询覆盖 HTTP 错误与错误页")]
+    public void FetchErrorSync()
+    {
+        var (client, handler, _) = CreateClient();
+        handler.Enqueue((request, token) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.BadRequest)
+        {
+            Content = new StringContent("boom", Encoding.UTF8, "text/plain"),
+        }));
+        var ex = Assert.Throws<PrestoException>(() => client.Fetch("http://localhost:8080/v1/statement/q1/1", CancellationToken.None));
+        Assert.Contains("boom", ex.Message);
+
+        var (client2, handler2, _) = CreateClient();
+        handler2.EnqueueJson("""{ "id": "q1", "error": { "message": "bad", "errorCode": 2 } }""");
+        Assert.Throws<PrestoException>(() => client2.Fetch("http://localhost:8080/v1/statement/q1/1", CancellationToken.None));
+    }
+
+    [Fact(DisplayName = "同步重试使用非零退避并记录日志")]
+    public void RetryTransientSyncWithDelay()
+    {
+        var handler = new FakePrestoHandler();
+        var options = PrestoConnectionOptions.From(new PrestoConnectionStringBuilder("Host=localhost;Port=8080;User=test;Password=secret;MaxRetries=1;RetryInterval=1"));
+        var session = new PrestoSessionState(options);
+        var http = new HttpClient(handler) { BaseAddress = options.BaseAddress };
+        var client = new PrestoStatementClient(http, options, session, NewLife.Log.XTrace.Log);
+        handler.Enqueue((request, token) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)));
+        handler.EnqueueJson("""{ "id": "q1", "columns": [{ "name": "a" }], "data": [["1"]] }""");
+
+        var results = client.Fetch("http://localhost:8080/v1/statement/q1/1", CancellationToken.None);
+
+        Assert.Single(results.Data);
+        Assert.Equal(2, handler.Requests.Count);
+    }
+
+    [Fact(DisplayName = "同步轮询遇到 503 后重试成功")]
+    public void RetryTransientSync()
+    {
+        var (client, handler, _) = CreateClient(";MaxRetries=2;RetryInterval=0");
+        handler.Enqueue((request, token) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)));
+        handler.EnqueueJson("""{ "id": "q1", "columns": [{ "name": "a" }], "data": [["1"]] }""");
+
+        var results = client.Fetch("http://localhost:8080/v1/statement/q1/1", CancellationToken.None);
+
+        Assert.Single(results.Data);
+        Assert.Equal(2, handler.Requests.Count);
+    }
+
+    [Fact(DisplayName = "同步提交覆盖 JWT 与无认证请求头")]
+    public void SubmitAuthVariantsSync()
+    {
+        var (jwtClient, jwtHandler, _) = CreateClient(";Auth=JWT;AccessToken=fixed");
+        jwtHandler.EnqueueJson("""{ "id": "q1", "columns": [], "data": [] }""");
+        jwtClient.Submit("select 1", CancellationToken.None);
+        Assert.Equal("Bearer fixed", jwtHandler.Requests[0].Headers.GetValues("Authorization").Single());
+
+        var handler = new FakePrestoHandler();
+        var options = PrestoConnectionOptions.From(new PrestoConnectionStringBuilder("Host=localhost;Port=8080;User=test;Auth=None"));
+        var session = new PrestoSessionState(options);
+        var http = new HttpClient(handler) { BaseAddress = options.BaseAddress };
+        var client = new PrestoStatementClient(http, options, session);
+        handler.EnqueueJson("""{ "id": "q1", "columns": [], "data": [] }""");
+
+        client.Submit("select 1", CancellationToken.None);
+
+        Assert.False(handler.Requests[0].Headers.Contains("Authorization"));
+    }
+
     [Fact(DisplayName = "提交请求携带全部会话头")]
     public async Task SubmitHeaders()
     {

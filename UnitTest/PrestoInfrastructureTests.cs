@@ -41,6 +41,23 @@ public class PrestoInfrastructureTests
         Assert.Equal("Bearer fixed", await PrestoAuthProvider.GetAuthorizationAsync(options, () => "", null, CancellationToken.None));
     }
 
+    [Fact(DisplayName = "同步认证头覆盖 Basic/JWT/无认证")]
+    public void SyncAuthorization()
+    {
+        var basic = PrestoConnectionOptions.From(new PrestoConnectionStringBuilder("Host=localhost;User=u;Password=p"));
+        Assert.Equal(PrestoAuthProvider.BuildBasic(basic), PrestoAuthProvider.GetAuthorization(basic, null));
+
+        var jwt = PrestoConnectionOptions.From(new PrestoConnectionStringBuilder("Host=localhost;Auth=JWT;AccessToken=fixed"));
+        Assert.Equal("Bearer fixed", PrestoAuthProvider.GetAuthorization(jwt, () => ""));
+        Assert.Equal("Bearer x", PrestoAuthProvider.GetAuthorization(jwt, () => "x"));
+
+        Assert.Throws<PrestoException>(() => PrestoAuthProvider.GetAuthorization(new PrestoConnectionOptions { Auth = PrestoAuth.Jwt }, null));
+
+        var none = PrestoConnectionOptions.From(new PrestoConnectionStringBuilder("Host=localhost;Auth=None"));
+        Assert.Null(PrestoAuthProvider.GetAuthorization(none, null));
+        Assert.Null(PrestoAuthProvider.GetAuthorization(null!, null));
+    }
+
     [Fact(DisplayName = "连接字符串同名别名共存时以规范键为准")]
     public void AliasConflict()
     {

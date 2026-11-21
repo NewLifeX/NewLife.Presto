@@ -37,6 +37,22 @@ public class PrestoSpoolingTests
         return rows;
     }
 
+    [Fact(DisplayName = "同步读取内嵌分段")]
+    public void InlineSegmentSync()
+    {
+        var handler = new FakePrestoHandler();
+        handler.EnqueueJson(SpooledPage($$"""{ "type": "inline", "data": "{{InlineData("[[1,\"a\"]]")}}" }"""));
+
+        var connection = TestHelper.CreateOpenConnection(handler, ";Protocol=Trino;Spooling=true");
+        using var command = connection.CreateCommand("select 1");
+        using var reader = command.ExecuteReader();
+
+        Assert.True(reader.Read());
+        Assert.Equal(1, reader.GetInt32(0));
+        Assert.Equal("a", reader.GetString(1));
+        Assert.False(reader.Read());
+    }
+
     [Fact(DisplayName = "Spooling 选项别名归一化并默认关闭")]
     public void SpoolingOption()
     {

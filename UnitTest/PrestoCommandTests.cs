@@ -63,6 +63,61 @@ public class PrestoCommandTests
         Assert.Equal(5, command.ExecuteNonQuery());
     }
 
+    [Fact(DisplayName = "异步 ExecuteNonQuery 使用 rows 列")]
+    public async Task NonQueryRowsColumnAsync()
+    {
+        var handler = new FakePrestoHandler();
+        handler.EnqueueJson("""{ "id": "q1", "columns": [{"name":"rows","type":"bigint"}], "data": [["5"]] }""");
+        var connection = TestHelper.CreateOpenConnection(handler);
+        using var command = connection.CreateCommand("delete from t");
+
+        Assert.Equal(5, await command.ExecuteNonQueryAsync(CancellationToken.None));
+    }
+
+    [Fact(DisplayName = "异步首包无列定义时继续拉取")]
+    public async Task FetchToColumnsAsync()
+    {
+        var handler = new FakePrestoHandler();
+        handler.EnqueueJson("""{ "id": "q1", "nextUri": "http://localhost:8080/v1/statement/q1/1" }""");
+        handler.EnqueueJson("""{ "id": "q1", "columns": [{"name":"n","type":"integer"}], "data": [["1"]] }""");
+        var connection = TestHelper.CreateOpenConnection(handler);
+        using var command = connection.CreateCommand("select 1");
+
+        using var reader = await command.ExecuteReaderAsync(CancellationToken.None);
+
+        Assert.Equal(1, reader.FieldCount);
+        Assert.True(await reader.ReadAsync(CancellationToken.None));
+        Assert.Equal(1, reader.GetInt32(0));
+    }
+
+    [Fact(DisplayName = "异步 SchemaOnly 取列后取消查询")]
+    public async Task SchemaOnlyAsync()
+    {
+        var handler = new FakePrestoHandler();
+        handler.EnqueueJson("""{ "id": "q1", "columns": [{"name":"n","type":"integer"}], "data": [], "nextUri": "http://localhost:8080/v1/statement/q1/1" }""");
+        handler.EnqueueJson("""{ "id": "q1" }""");
+        var connection = TestHelper.CreateOpenConnection(handler);
+        using var command = connection.CreateCommand("select 1");
+
+        using var reader = await command.ExecuteReaderAsync(CommandBehavior.SchemaOnly, CancellationToken.None);
+
+        Assert.Equal(1, reader.FieldCount);
+        Assert.Contains(handler.Requests, e => e.Method == HttpMethod.Delete);
+    }
+
+    [Fact(DisplayName = "异步提交超时映射为命令超时")]
+    public async Task SubmitTimeoutAsync()
+    {
+        var handler = new FakePrestoHandler();
+        handler.EnqueueDelay(TimeSpan.FromSeconds(5), """{ "id": "q1", "columns": [], "data": [] }""");
+        var connection = TestHelper.CreateOpenConnection(handler);
+        var command = new PrestoCommand("select 1", connection) { CommandTimeout = 1 };
+
+        var ex = await Assert.ThrowsAsync<PrestoException>(() => command.ExecuteScalarAsync(CancellationToken.None));
+
+        Assert.Equal(NewLife.Localization.Translate("Command timeout of {0} seconds expired.", 1), ex.Message);
+    }
+
     [Fact(DisplayName = "ExecuteNonQuery updateType 无计数返回零")]
     public void NonQueryUpdateTypeZero()
     {

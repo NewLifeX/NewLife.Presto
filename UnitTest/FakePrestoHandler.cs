@@ -55,6 +55,10 @@ public sealed class FakePrestoHandler : HttpMessageHandler
         => Enqueue((request, token) => Task.FromException<HttpResponseMessage>(exception));
 
     /// <inheritdoc />
+    protected override HttpResponseMessage Send(HttpRequestMessage request, CancellationToken cancellationToken)
+        => SendAsync(request, cancellationToken).GetAwaiter().GetResult();
+
+    /// <inheritdoc />
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         var body = request.Content == null ? String.Empty : await request.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);

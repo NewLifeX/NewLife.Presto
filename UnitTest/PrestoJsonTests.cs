@@ -577,5 +577,9 @@ public class PrestoJsonTests
 
         var lazy = PrestoJson.ParseResults("""{ "stats": { "state": "Y" } }""").Stats!;
         Assert.Equal("Y", lazy.Raw!["state"]);
+        Assert.Same(lazy.Raw, lazy.Raw);
+
+        var none = new PrestoQueryStats();
+        Assert.Null(none.Raw);
     }
 }
