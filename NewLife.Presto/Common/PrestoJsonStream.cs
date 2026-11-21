@@ -1,4 +1,5 @@
 #if NET6_0_OR_GREATER
+using System.Buffers.Text;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
@@ -81,6 +82,9 @@ internal static partial class PrestoJson
         Int64? updateCount = null;
         List<PrestoColumn>? columns = null;
         IList<IList<Object?>>? data = null;
+        Object?[]? cellBuffer = null;
+        var cellArity = 0;
+        var rowCount = 0;
         String? dataEncoding = null;
         IList<PrestoQuerySegment>? segments = null;
         PrestoQueryStats? stats = null;
@@ -125,7 +129,17 @@ internal static partial class PrestoJson
             {
                 reader.Read();
                 if (reader.TokenType == JsonTokenType.StartArray)
-                    data = ReadData(ref reader, columns, CountArrayItems(utf8, (Int32)reader.TokenStartIndex));
+                {
+                    var page = ReadPageData(ref reader, columns, CountArrayItems(utf8, (Int32)reader.TokenStartIndex));
+                    if (page.Cells != null)
+                    {
+                        cellBuffer = page.Cells;
+                        cellArity = page.Arity;
+                        rowCount = page.Count;
+                    }
+                    else
+                        data = page.Rows;
+                }
                 else if (reader.TokenType == JsonTokenType.StartObject)
                 {
                     // Spooling：小对象，保留字典模型
@@ -167,7 +181,11 @@ internal static partial class PrestoJson
             InfoUri = infoUri,
             NextUri = nextUri,
             Columns = columns ?? [],
-            Data = data ?? [],
+            // 扁平数据由 CellBuffer 承载时 Data 留空，首次访问再展开
+            Data = data!,
+            CellBuffer = cellBuffer,
+            CellArity = cellArity,
+            RowCount = rowCount,
             DataEncoding = dataEncoding,
             Segments = segments ?? [],
             Stats = stats,
@@ -421,6 +439,25 @@ internal static partial class PrestoJson
     private static readonly Object _trueValue = true;
     private static readonly Object _falseValue = false;
 
+    /// <summary>单页扁平行数组的单元格上限，超过则退回行列表，避免单页缓冲区过大</summary>
+    private const Int32 MaxFlatCells = 32768;
+
+    /// <summary>单页数据：扁平行数组或行列表二选一</summary>
+    private sealed class PageData
+    {
+        /// <summary>扁平存放的单元格，按行连续排列</summary>
+        public Object?[]? Cells;
+
+        /// <summary>每行列数</summary>
+        public Int32 Arity;
+
+        /// <summary>行数</summary>
+        public Int32 Count;
+
+        /// <summary>行列表，仅在无法扁平存放或行列数不一致时使用</summary>
+        public IList<IList<Object?>>? Rows;
+    }
+
     private static List<IList<Object?>> ReadData(ref Utf8JsonReader reader, List<PrestoColumn>? columns, Int32 capacity = 0)
     {
         var list = capacity > 0 ? new List<IList<Object?>>(capacity) : new List<IList<Object?>>();
@@ -441,6 +478,94 @@ internal static partial class PrestoJson
         }
 
         return list;
+    }
+
+    private static PageData ReadPageData(ref Utf8JsonReader reader, List<PrestoColumn>? columns, Int32 capacity)
+    {
+        var arity = columns?.Count ?? 0;
+
+        // 单页单元格总量较小时用一整块数组存放，省掉每行一个对象数组的开销；超限退回行列表，避免大对象堆
+        if (arity > 0 && capacity > 0 && capacity <= MaxFlatCells / arity) return ReadFlatData(ref reader, columns, arity, capacity);
+
+        return new PageData { Rows = ReadData(ref reader, columns, capacity) };
+    }
+
+    private static PageData ReadFlatData(ref Utf8JsonReader reader, List<PrestoColumn>? columns, Int32 arity, Int32 capacity)
+    {
+        var cells = new Object?[capacity * arity];
+        Int32[]? counts = null;
+        var count = 0;
+
+        while (reader.Read())
+        {
+            if (reader.TokenType == JsonTokenType.EndArray) break;
+
+            if (count == capacity)
+            {
+                capacity *= 2;
+                Array.Resize(ref cells, capacity * arity);
+                if (counts != null) Array.Resize(ref counts, capacity);
+            }
+
+            if (reader.TokenType != JsonTokenType.StartArray)
+            {
+                // 非数组行按空行处理，与字典路径一致
+                SkipValue(ref reader);
+                counts ??= NewRowCounts(capacity, arity, count);
+                counts[count] = 0;
+                count++;
+                continue;
+            }
+
+            var offset = count * arity;
+            var index = 0;
+            while (reader.Read())
+            {
+                if (reader.TokenType == JsonTokenType.EndArray) break;
+
+                if (index < arity)
+                    cells[offset + index] = ReadCell(ref reader, columns, index);
+                else
+                    SkipValue(ref reader);
+
+                index++;
+            }
+
+            // 行列数不一致时记下实际单元格数，收尾时退回行列表，保持“保留实际单元格”的语义
+            if (counts != null)
+                counts[count] = index < arity ? index : arity;
+            else if (index != arity)
+            {
+                counts = NewRowCounts(capacity, arity, count);
+                counts[count] = index < arity ? index : arity;
+            }
+
+            count++;
+        }
+
+        if (count * arity != cells.Length) Array.Resize(ref cells, count * arity);
+
+        if (counts == null) return new PageData { Cells = cells, Arity = arity, Count = count };
+
+        var rows = new List<IList<Object?>>(count);
+        for (var i = 0; i < count; i++)
+        {
+            var length = counts[i];
+            var row = new Object?[length];
+            if (length > 0) Array.Copy(cells, i * arity, row, 0, length);
+            rows.Add(row);
+        }
+
+        return new PageData { Rows = rows };
+    }
+
+    /// <summary>新建每行实际单元格数数组；此前读到的行都是规整行，按列数补齐</summary>
+    private static Int32[] NewRowCounts(Int32 capacity, Int32 arity, Int32 count)
+    {
+        var counts = new Int32[capacity];
+        for (var i = 0; i < count; i++) counts[i] = arity;
+
+        return counts;
     }
 
     private static IList<Object?> ReadRow(ref Utf8JsonReader reader, List<PrestoColumn>? columns, Int32 arity)
@@ -490,18 +615,57 @@ internal static partial class PrestoJson
 
     private static Object? ReadCell(ref Utf8JsonReader reader, List<PrestoColumn>? columns, Int32 ordinal)
     {
-        var type = ordinal >= 0 && columns != null && ordinal < columns.Count ? columns[ordinal].FieldType : null;
+        var column = ordinal >= 0 && columns != null && ordinal < columns.Count ? columns[ordinal] : null;
 
         return reader.TokenType switch
         {
-            JsonTokenType.String => reader.GetString(),
-            JsonTokenType.Number => ReadNumber(ref reader, type),
+            JsonTokenType.String => ReadString(ref reader, column),
+            JsonTokenType.Number => ReadNumber(ref reader, column?.FieldType),
             JsonTokenType.True => _trueValue,
             JsonTokenType.False => _falseValue,
             JsonTokenType.Null => null,
             JsonTokenType.StartObject => ReadDictionary(ref reader),
             JsonTokenType.StartArray => ReadList(ref reader), _ => null,
         };
+    }
+
+    private static Object? ReadString(ref Utf8JsonReader reader, PrestoColumn? column)
+    {
+        // 文本形态的数值与日期直接在 UTF-8 字节上转换，省掉中间字符串；
+        // 含转义字符时字节与明文不一致，解析会失败并回退到字符串，语义不变
+        if (column != null)
+        {
+            var span = reader.ValueSpan;
+            if (column.FieldType == typeof(Decimal))
+            {
+                if (Utf8Parser.TryParse(span, out Decimal number, out var consumed) && consumed == span.Length) return number;
+            }
+            else if (column.FieldType == typeof(DateTime) && column.Type == "date" && TryParseDate(span, out var date)) return date;
+        }
+
+        return reader.GetString();
+    }
+
+    /// <summary>按 yyyy-MM-dd 解析日期；格式不符返回 false，交给后续通用转换报错</summary>
+    private static Boolean TryParseDate(ReadOnlySpan<Byte> span, out DateTime value)
+    {
+        value = default;
+        if (span.Length != 10 || span[4] != '-' || span[7] != '-') return false;
+
+        var year = (span[0] - '0') * 1000 + (span[1] - '0') * 100 + (span[2] - '0') * 10 + (span[3] - '0');
+        var month = (span[5] - '0') * 10 + (span[6] - '0');
+        var day = (span[8] - '0') * 10 + (span[9] - '0');
+        if (year < 1 || month < 1 || month > 12 || day < 1 || day > 31) return false;
+
+        try
+        {
+            value = new DateTime(year, month, day);
+            return true;
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return false;
+        }
     }
 
     private static Object ReadNumber(ref Utf8JsonReader reader, Type? type)

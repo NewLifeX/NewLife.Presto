@@ -9,6 +9,8 @@ namespace NewLife.Presto;
 /// </remarks>
 public sealed class PrestoQueryResults
 {
+    private IList<IList<Object?>>? _data;
+
     /// <summary>查询编号</summary>
     public String? Id { get; init; }
 
@@ -22,7 +24,21 @@ public sealed class PrestoQueryResults
     public IList<PrestoColumn> Columns { get; init; } = [];
 
     /// <summary>当前页数据行</summary>
-    public IList<IList<Object?>> Data { get; init; } = [];
+    /// <remarks>流式解析时数据以扁平行数组保存，首次访问本属性才展开为行列表。</remarks>
+    public IList<IList<Object?>> Data
+    {
+        get => _data ??= Materialize();
+        init => _data = value;
+    }
+
+    /// <summary>扁平存放的单元格；为空表示数据在 <see cref="Data"/> 中</summary>
+    internal Object?[]? CellBuffer { get; init; }
+
+    /// <summary>扁平行数组的每行列数</summary>
+    internal Int32 CellArity { get; init; }
+
+    /// <summary>扁平行数组的行数</summary>
+    internal Int32 RowCount { get; init; }
 
     /// <summary>当前页数据编码；空表示直接协议</summary>
     internal String? DataEncoding { get; init; }
@@ -47,4 +63,22 @@ public sealed class PrestoQueryResults
 
     /// <summary>是否已结束</summary>
     public Boolean IsComplete => NextUri.IsNullOrEmpty();
+
+    private IList<IList<Object?>> Materialize()
+    {
+        var cells = CellBuffer;
+        var count = RowCount;
+        var arity = CellArity;
+        if (cells == null || count <= 0 || arity <= 0) return [];
+
+        var rows = new List<IList<Object?>>(count);
+        for (var i = 0; i < count; i++)
+        {
+            var row = new Object?[arity];
+            Array.Copy(cells, i * arity, row, 0, arity);
+            rows.Add(row);
+        }
+
+        return rows;
+    }
 }

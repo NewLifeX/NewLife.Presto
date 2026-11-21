@@ -27,8 +27,11 @@ public sealed class PrestoDataReader : DbDataReader
     private readonly Boolean _singleRow;
     private readonly List<PrestoWarning> _warnings = [];
 
-    private PrestoQueryResults _page;
-    private IList<IList<Object?>> _rows;
+    private PrestoQueryResults _page = null!;
+    private IList<IList<Object?>> _rows = null!;
+    private Object?[]? _cells;
+    private Int32 _arity;
+    private Int32 _rowCount;
     private Int32 _rowIndex = -1;
     private Boolean _closed;
     private Boolean _completed;
@@ -41,6 +44,7 @@ public sealed class PrestoDataReader : DbDataReader
     private Int64 _recordsAffected = -1;
     private Task? _cancelTask;
     private static readonly Task _cancelCompleted = Task.FromResult(0);
+    private static readonly IList<IList<Object?>> _emptyRows = new IList<Object?>[0];
     #endregion
 
     #region 构造
@@ -55,9 +59,8 @@ public sealed class PrestoDataReader : DbDataReader
     {
         _client = client;
         _command = command;
-        _page = page;
         _columns = page.Columns;
-        _rows = page.Data;
+        BindPage(page);
         _behavior = behavior;
         _executionToken = executionToken;
         _timeoutCts = timeoutCts;
@@ -74,7 +77,7 @@ public sealed class PrestoDataReader : DbDataReader
             _completed = true;
             _hasRowsKnown = true;
         }
-        else if (_rows.Count > 0)
+        else if (_rowCount > 0)
         {
             _hasRows = true;
             _hasRowsKnown = true;
@@ -150,7 +153,7 @@ public sealed class PrestoDataReader : DbDataReader
 
         while (true)
         {
-            if (_rowIndex + 1 < _rows.Count)
+            if (_rowIndex + 1 < _rowCount)
             {
                 _rowIndex++;
                 _hasRows = true;
@@ -186,7 +189,7 @@ public sealed class PrestoDataReader : DbDataReader
 
         while (true)
         {
-            if (_rowIndex + 1 < _rows.Count)
+            if (_rowIndex + 1 < _rowCount)
             {
                 _rowIndex++;
                 _hasRows = true;
@@ -226,7 +229,7 @@ public sealed class PrestoDataReader : DbDataReader
         CheckOrdinal(ordinal);
         CheckRow();
 
-        var value = _rows[_rowIndex][ordinal];
+        var value = GetCell(ordinal);
         if (value == null || value is DBNull) return DBNull.Value;
 
         return PrestoValueConverter.Convert(value, _columns[ordinal]);
@@ -253,7 +256,7 @@ public sealed class PrestoDataReader : DbDataReader
         CheckOrdinal(ordinal);
         CheckRow();
 
-        var value = _rows[_rowIndex][ordinal];
+        var value = GetCell(ordinal);
         return value == null || value is DBNull;
     }
 
@@ -470,6 +473,8 @@ public sealed class PrestoDataReader : DbDataReader
         if (!_completed) CancelRemaining();
 
         _rows = [];
+        _cells = null;
+        _rowCount = 0;
         _schemaTable = null;
         _command.OnReaderClosed(this);
 
@@ -502,7 +507,7 @@ public sealed class PrestoDataReader : DbDataReader
     {
         EnsureOpen();
 
-        if (_rowIndex < 0 || _rowIndex >= _rows.Count)
+        if (_rowIndex < 0 || _rowIndex >= _rowCount)
             throw new InvalidOperationException(Localization.Translate("No current row is available."));
     }
 
@@ -510,7 +515,7 @@ public sealed class PrestoDataReader : DbDataReader
     {
         while (true)
         {
-            if (_rows.Count > 0)
+            if (_rowCount > 0)
             {
                 _hasRows = true;
                 _hasRowsKnown = true;
@@ -570,8 +575,7 @@ public sealed class PrestoDataReader : DbDataReader
 
     private void AcceptPage(PrestoQueryResults results)
     {
-        _page = results;
-        _rows = results.Data;
+        BindPage(results);
         _rowIndex = -1;
 
         if (results.Stats != null) _stats = results.Stats;
@@ -581,6 +585,30 @@ public sealed class PrestoDataReader : DbDataReader
         _completed = results.NextUri.IsNullOrEmpty();
         if (_completed) _client.MarkCompleted();
     }
+
+    /// <summary>绑定当前结果页，优先使用扁平行数组，避免逐行对象数组分配</summary>
+    private void BindPage(PrestoQueryResults page)
+    {
+        _page = page;
+
+        var cells = page.CellBuffer;
+        if (cells != null)
+        {
+            _cells = cells;
+            _arity = page.CellArity;
+            _rowCount = page.RowCount;
+            _rows = _emptyRows;
+        }
+        else
+        {
+            _cells = null;
+            _arity = 0;
+            _rows = page.Data;
+            _rowCount = _rows.Count;
+        }
+    }
+
+    private Object? GetCell(Int32 ordinal) => _cells != null ? _cells[_rowIndex * _arity + ordinal] : _rows[_rowIndex][ordinal];
 
     private void AddWarnings(IEnumerable<PrestoWarning> warnings)
     {
