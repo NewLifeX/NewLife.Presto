@@ -17,7 +17,7 @@
 
 **NewLife.Presto** est un pilote ADO.NET en C# pur pour PrestoDB et Trino, développé par l’équipe NewLife. Il utilise le protocole client HTTP REST v1 officiel, ne dépend que de `NewLife.Core` avec **aucune dépendance tierce**, embarque **33 langues d’exécution**, cible `net45` à `net11` et est **compatible NativeAOT** à partir de `net8.0`. PrestoDB et Trino partagent un seul paquet ; `Protocol=Trino` (ou `TrinoHeaders=true`) change les en-têtes de requête.
 
-> **État du projet** : phase de conception et d’échafaudage. Les briques hors ligne (chaîne de connexion, en-têtes de protocole, mappage des types, localisation, test AOT) sont implémentées et testées ; le réseau et l’exécution des requêtes sont suivis dans la [liste des fonctions](Doc/功能清单.md).
+> **État du projet** : implémenté et testé — pilote ADO.NET de base plus fournisseurs EF Core et EF6 en lecture seule, livrés en trois packages NuGet par le même pipeline de publication. 484 tests unitaires du cœur, tests des fournisseurs EF et intégration réelle Trino/PrestoDB passent ; seul le Spooling reste différé. Voir la [liste des fonctions](Doc/功能清单.md).
 
 **Sommaire**: [Démarrage rapide](#démarrage-rapide) · [Pourquoi NewLife.Presto](#pourquoi-newlifepresto) · [Fonctions principales](#fonctions-principales) · [Prise en charge des plateformes](#prise-en-charge-des-plateformes) · [Localisation](#localisation) · [Documentation](#documentation) · [Contribution](#contribution) · [Carte de l'écosystème](#carte-de-lécosystème) · [Équipe](#équipe) · [Licence](#licence)
 

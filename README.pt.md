@@ -17,7 +17,7 @@
 
 **NewLife.Presto** é um driver ADO.NET em C# puro para PrestoDB e Trino da equipe NewLife. Ele usa o protocolo cliente HTTP REST v1 oficial, depende apenas de `NewLife.Core` com **zero dependências de terceiros**, inclui **33 idiomas de execução**, oferece suporte de `net45` a `net11` e está **pronto para NativeAOT** em `net8.0+`. PrestoDB e Trino compartilham um único pacote; `Protocol=Trino` (ou `TrinoHeaders=true`) alterna os cabeçalhos de solicitação.
 
-> **Estado do projeto**: fase de design e scaffolding. Os componentes offline (string de conexão, cabeçalhos de protocolo, mapeamento de tipos, localização, teste AOT) estão implementados e testados; a rede e a execução de consultas são acompanhadas na [lista de funções](Doc/功能清单.md).
+> **Estado do projeto**: implementado e testado — driver ADO.NET principal mais provedores EF Core e EF6 somente leitura, entregues como três pacotes NuGet pelo mesmo pipeline de publicação. 484 testes unitários do núcleo, testes dos provedores EF e integração real com Trino/PrestoDB passam; resta apenas Spooling (adiado). Ver a [lista de funções](Doc/功能清单.md).
 
 **Conteúdo**: [Início rápido](#início-rápido) · [Por que NewLife.Presto](#por-que-newlifepresto) · [Principais recursos](#principais-recursos) · [Suporte de plataformas](#suporte-de-plataformas) · [Localização](#localização) · [Documentação](#documentação) · [Contribuição](#contribuição) · [Mapa do ecossistema](#mapa-do-ecossistema) · [Equipe](#equipe) · [Licença](#licença)
 

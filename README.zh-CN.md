@@ -17,7 +17,7 @@
 
 **NewLife.Presto** 是新生命开发团队出品的纯 C# PrestoDB / Trino ADO.NET 驱动。它使用官方 HTTP REST v1 客户端协议，仅依赖 `NewLife.Core`，**零第三方依赖**，内置 **33 种运行时语言**，目标框架覆盖 `net45` ~ `net11`，`net8.0+` **支持 NativeAOT**。PrestoDB 与 Trino 共用一个包，通过 `Protocol=Trino`（或 `TrinoHeaders=true`）切换请求头。
 
-> **项目状态**：设计与脚手架阶段。离线基础组件已实现并通过测试（连接字符串、协议头、类型映射、多语言、AOT 冒烟）；网络与查询执行进度见[功能清单](Doc/功能清单.md)。
+> **项目状态**：已实现并通过测试——核心 ADO.NET 驱动 + 只读的 EF Core 与 EF6 Provider，构建为三个 NuGet 包并由同一发布流程打包推送。484 项核心单测、EF Provider 测试与真实 Trino/PrestoDB 集成全部通过；仅 Spooling 暂缓。见[功能清单](Doc/功能清单.md)。
 
 **目录**: [快速开始](#快速开始) · [为什么选择 NewLife.Presto](#为什么选择-newlifepresto) · [主要功能](#主要功能) · [平台支持](#平台支持) · [多语言](#多语言) · [文档](#文档) · [参与贡献](#参与贡献) · [生态版图](#生态版图) · [新生命开发团队](#新生命开发团队) · [许可证](#许可证)
 
