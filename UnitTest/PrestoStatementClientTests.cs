@@ -154,7 +154,7 @@ public class PrestoStatementClientTests
     [Fact(DisplayName = "提交请求携带全部会话头")]
     public async Task SubmitHeaders()
     {
-        var (client, handler, _) = CreateClient(";SessionProperties=a=1|b=2;CustomHeaders=X-Tenant:team;Role=admin;Language=en;ClientTags=t1,t2;ClientInfo=ci;ResourceGroup=rg;TraceToken=tt;Source=src");
+        var (client, handler, _) = CreateClient(";Compression=true;SessionProperties=a=1|b=2;CustomHeaders=X-Tenant:team;Role=admin;Language=en;ClientTags=t1,t2;ClientInfo=ci;ResourceGroup=rg;TraceToken=tt;Source=src");
         handler.EnqueueJson("""{ "id": "q1", "columns": [], "data": [] }""");
 
         var results = await client.SubmitAsync("select 1", CancellationToken.None);
@@ -219,15 +219,18 @@ public class PrestoStatementClientTests
         Assert.Throws<ArgumentException>(() => CreateClient(";Auth=JWT"));
     }
 
-    [Fact(DisplayName = "关闭压缩时不发送 Accept-Encoding")]
+    [Fact(DisplayName = "默认与显式关闭压缩时都不发送 Accept-Encoding")]
     public async Task NoCompressionHeader()
     {
-        var (client, handler, _) = CreateClient(";Compression=false");
-        handler.EnqueueJson("""{ "id": "q1" }""");
+        foreach (var suffix in new[] { "", ";Compression=false" })
+        {
+            var (client, handler, _) = CreateClient(suffix);
+            handler.EnqueueJson("""{ "id": "q1" }""");
 
-        await client.SubmitAsync("select 1", CancellationToken.None);
+            await client.SubmitAsync("select 1", CancellationToken.None);
 
-        Assert.False(Assert.Single(handler.Requests).Headers.AcceptEncoding.Any());
+            Assert.False(Assert.Single(handler.Requests).Headers.AcceptEncoding.Any());
+        }
     }
 
     [Fact(DisplayName = "轮询相对 nextUri")]

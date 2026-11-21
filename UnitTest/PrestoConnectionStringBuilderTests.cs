@@ -24,7 +24,7 @@ public class PrestoConnectionStringBuilderTests
         Assert.False(builder.UseSsl);
         Assert.False(builder.TrustServerCertificate);
         Assert.False(builder.TestConnection);
-        Assert.True(builder.Compression);
+        Assert.False(builder.Compression);
     }
 
     /// <summary>XCode 写法归一化</summary>

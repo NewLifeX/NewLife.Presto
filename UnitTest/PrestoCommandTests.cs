@@ -230,6 +230,23 @@ public class PrestoCommandTests
         Assert.Equal(HttpMethod.Delete, handler.Requests[1].Method);
     }
 
+    [Fact(DisplayName = "终态数据页提前关闭不再发送 DELETE")]
+    public void SkipCancelWhenFinished()
+    {
+        var handler = new FakePrestoHandler();
+        handler.EnqueueJson("""{ "id": "q1", "columns": [{"name":"n","type":"integer"}], "data": [["1"]], "nextUri": "http://localhost:8080/v1/statement/q1/1", "stats": { "state": "FINISHED" } }""");
+        var connection = TestHelper.CreateOpenConnection(handler);
+        using var command = new PrestoCommand("select 1", connection);
+
+        using (var reader = command.ExecuteReader(CommandBehavior.SingleRow))
+        {
+            Assert.True(reader.Read());
+            Assert.Equal(1, reader.GetInt32(0));
+        }
+
+        Assert.DoesNotContain(handler.Requests, e => e.Method == HttpMethod.Delete);
+    }
+
     [Fact(DisplayName = "CloseConnection 随读取器关闭连接")]
     public void CloseConnectionBehavior()
     {
