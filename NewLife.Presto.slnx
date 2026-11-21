@@ -6,6 +6,10 @@
   </Configurations>
   <Project Path="AotSmoke/AotSmoke.csproj" />
   <Project Path="NewLife.Presto/NewLife.Presto.csproj" />
+  <Project Path="NewLife.Presto.EntityFramework/NewLife.Presto.EntityFramework.csproj" />
+  <Project Path="NewLife.Presto.EntityFrameworkCore/NewLife.Presto.EntityFrameworkCore.csproj" />
   <Project Path="Test/Test.csproj" />
   <Project Path="UnitTest/UnitTest.csproj" />
+  <Project Path="UnitTest.EntityFramework/UnitTest.EntityFramework.csproj" />
+  <Project Path="UnitTest.EntityFrameworkCore/UnitTest.EntityFrameworkCore.csproj" />
 </Solution>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <xUnit>
+    <!-- EF6 的元数据缓存与 AppDomain 卸载存在冲突，禁用测试 AppDomain 以免测试宿主无法退出 -->
+    <appDomain>denied</appDomain>
+    <parallelizeTestCollections>false</parallelizeTestCollections>
+  </xUnit>
+</RunSettings>
