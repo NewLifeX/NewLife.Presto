@@ -20,12 +20,15 @@ New-Item -ItemType Directory -Path $work | Out-Null
 if (!$PackageDir) {
     $PackageDir = Join-Path $work "packages"
     New-Item -ItemType Directory -Path $PackageDir | Out-Null
-    Write-Host "打包 NewLife.Presto ..."
-    & dotnet pack (Join-Path $Root "NewLife.Presto\NewLife.Presto.csproj") -c Release -o $PackageDir --nologo
-    if ($LASTEXITCODE -ne 0) { throw "dotnet pack 失败" }
+    foreach ($project in @("NewLife.Presto\NewLife.Presto.csproj", "NewLife.Presto.EntityFrameworkCore\NewLife.Presto.EntityFrameworkCore.csproj", "NewLife.Presto.EntityFramework\NewLife.Presto.EntityFramework.csproj")) {
+        Write-Host "打包 $project ..."
+        & dotnet pack (Join-Path $Root $project) -c Release -o $PackageDir --nologo
+        if ($LASTEXITCODE -ne 0) { throw "dotnet pack 失败：$project" }
+    }
 }
 
 $nupkg = Get-ChildItem -LiteralPath $PackageDir -Filter "NewLife.Presto.*.nupkg" -File |
+    Where-Object { $_.BaseName -match '^NewLife\.Presto\.\d' } |
     Sort-Object Name | Select-Object -Last 1
 if (!$nupkg) { throw "未找到 NewLife.Presto nupkg：$PackageDir" }
 $PackageDir = (Resolve-Path -LiteralPath $PackageDir).Path
@@ -36,17 +39,21 @@ Write-Host "包版本：$pkgVersion"
 
 # 校验包内关键文件，避免发布缺少 README、图标或目标程序集
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$zip = [System.IO.Compression.ZipFile]::OpenRead($nupkg.FullName)
-try {
-    $entries = $zip.Entries | ForEach-Object FullName
-    foreach ($required in @("README.nuget.md", "leaf.png", "lib/net10.0/NewLife.Presto.dll")) {
-        if ($entries -notcontains $required) { throw "包内缺少 $required" }
+foreach ($package in Get-ChildItem -LiteralPath $PackageDir -Filter "NewLife.Presto*.nupkg" -File) {
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($package.FullName)
+    try {
+        $entries = $zip.Entries | ForEach-Object FullName
+        foreach ($required in @("README.nuget.md", "leaf.png")) {
+            if ($entries -notcontains $required) { throw "$($package.Name) 缺少 $required" }
+        }
+        $assembly = $package.BaseName -replace '\.\d+(\.[0-9A-Za-z\-]+)*$', ''
+        if (!($entries | Where-Object { $_ -like "lib/*/$assembly.dll" })) { throw "$($package.Name) 缺少 lib/*/$assembly.dll" }
     }
+    finally {
+        $zip.Dispose()
+    }
+    Write-Host "包内容校验通过：$($package.Name)"
 }
-finally {
-    $zip.Dispose()
-}
-Write-Host "包内容校验通过：README、图标、net10.0 程序集"
 
 $consumer = Join-Path $work "Consumer"
 & dotnet new console -n Consumer -o $consumer --framework net10.0 --force | Out-Null

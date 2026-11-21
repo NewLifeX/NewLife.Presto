@@ -6,6 +6,10 @@ on:
     paths:
       - 'NewLife.Presto/**'
       - 'UnitTest/**'
+      - 'UnitTest.EntityFramework/**'
+      - 'UnitTest.EntityFrameworkCore/**'
+      - 'NewLife.Presto.EntityFramework/**'
+      - 'NewLife.Presto.EntityFrameworkCore/**'
       - 'Test/**'
       - 'AotSmoke/**'
       - 'Doc/**'
@@ -20,6 +24,10 @@ on:
     paths:
       - 'NewLife.Presto/**'
       - 'UnitTest/**'
+      - 'UnitTest.EntityFramework/**'
+      - 'UnitTest.EntityFrameworkCore/**'
+      - 'NewLife.Presto.EntityFramework/**'
+      - 'NewLife.Presto.EntityFrameworkCore/**'
       - 'Test/**'
       - 'AotSmoke/**'
       - 'Doc/**'
@@ -80,6 +88,13 @@ jobs:
       if: matrix.rid != 'win-x64'
       run: |
         dotnet test UnitTest/UnitTest.csproj -c Release --no-build --logger "trx;LogFileName=unittest.trx" --results-directory TestResults
+    - name: EF Core provider tests（net8.0 / net10.0）
+      run: |
+        dotnet test UnitTest.EntityFrameworkCore/UnitTest.EntityFrameworkCore.csproj -c Release --no-build --logger "trx;LogFileName=efcore.trx" --results-directory TestResults
+    - name: EF6 provider tests（win-x64 / net472）
+      if: matrix.rid == 'win-x64'
+      run: |
+        dotnet test UnitTest.EntityFramework/UnitTest.EntityFramework.csproj -c Release --no-build --settings UnitTest.EntityFramework/xunit.runsettings --logger "trx;LogFileName=ef6.trx" --results-directory TestResults
     - name: Console smoke
       run: dotnet run --project Test/Test.csproj -c Release --no-build
     - name: AOT smoke (JIT baseline)

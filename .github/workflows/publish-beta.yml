@@ -66,6 +66,8 @@ jobs:
           --results-directory TestResults \
           --logger "trx;LogFileName=unittest.trx"
         pwsh -NoProfile -File ./tools/check-coverage.ps1 -LineThreshold 100 -BranchThreshold 95
+    - name: EF Core provider tests
+      run: dotnet test UnitTest.EntityFrameworkCore/UnitTest.EntityFrameworkCore.csproj -c Release --no-build
     - name: Console smoke
       run: dotnet run --project Test/Test.csproj -c Release --no-build
     - name: AOT smoke (JIT baseline)
@@ -75,7 +77,10 @@ jobs:
       env:
         LANG: en_US.UTF-8
         LC_ALL: en_US.UTF-8
-      run: dotnet pack --version-suffix ${VERSION} -c Release -o out NewLife.Presto/NewLife.Presto.csproj
+      run: |
+        dotnet pack --version-suffix ${VERSION} -c Release -o out NewLife.Presto/NewLife.Presto.csproj
+        dotnet pack --version-suffix ${VERSION} -c Release -o out NewLife.Presto.EntityFrameworkCore/NewLife.Presto.EntityFrameworkCore.csproj
+        dotnet pack --version-suffix ${VERSION} -c Release -o out NewLife.Presto.EntityFramework/NewLife.Presto.EntityFramework.csproj
     - name: Package consumer smoke
       id: consumer
       shell: pwsh
