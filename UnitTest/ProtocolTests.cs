@@ -115,7 +115,7 @@ public class ProtocolTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    public void EmptyTypeFallsBackToString(String type)
+    public void EmptyTypeFallsBackToString(String? type)
     {
         Assert.Equal(String.Empty, PrestoTypeMapper.GetBaseType(type));
         Assert.Equal(typeof(String), PrestoTypeMapper.GetFieldType(type));
