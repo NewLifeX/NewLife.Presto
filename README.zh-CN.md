@@ -70,14 +70,14 @@ var count = await cmd.ExecuteScalarAsync();
 | 连接字符串别名 | `Host`/`Server`/`Data Source`、`Catalog`/`Database`、`Schema`/`Owner` 与 XCode 写法兼容 |
 | PrestoDB / Trino 双协议头 | 默认 `Protocol=Presto`；Trino 351+ 用 `Protocol=Trino` 或 `TrinoHeaders=true` |
 | 会话上下文 | Catalog、Schema、用户、来源、时区、会话属性与自定义请求头 |
-| 认证 | Basic、JWT/Bearer 与网关自定义头，敏感信息不写日志 |
+| 认证 | Basic、JWT/Bearer、OAuth2 客户端凭据与网关自定义头，敏感信息不写日志 |
 | TLS 与代理 | 默认严格校验证书；私有 CA 需显式放宽 |
 | 共享 HTTP 传输 | 按端点复用 `HttpClient`，支持代理、压缩与超时 |
 
 </details>
 
 <details>
-<summary><b>查询与类型</b>（6 项）</summary>
+<summary><b>查询与类型</b>（7 项）</summary>
 
 | 功能点 | 一句话特点 |
 |--------|------------|
@@ -86,7 +86,8 @@ var count = await cmd.ExecuteScalarAsync();
 | 瞬态重试 | 429/502/503/504，按 `Retry-After` 或指数退避 |
 | `@name` 参数 | 客户端替换，跳过字符串、标识符与注释 |
 | 类型保真 | 布尔、整数、decimal、日期时间、timestamp with time zone、UUID、IP 与二进制 |
-| 复杂类型 | 首版将 `array`/`map`/`row`/`json` 返回为原始字符串 |
+| 复杂类型 | `array`/`map`/`row` 默认原始字符串；`ComplexTypes=Structured` 返回 `object[]` 与字典 |
+| `DbBatch`（.NET 6+） | 批量命令顺序提交，汇总受影响行数，取消传播到整批 |
 
 </details>
 
@@ -98,7 +99,7 @@ var count = await cmd.ExecuteScalarAsync();
 | `GetSchema` | `MetaDataCollections`、`Tables`、`Columns`、`DataTypes` |
 | XCode 集成 | 默认驱动切换并保留旧驱动回退；不声称支持事务、DDL 或自增 |
 | 多语言 | 33 种运行时语言，编译期生成，AOT 可用 |
-| 诊断 | 异常与日志保留查询 ID、错误码、SQLState 与耗时 |
+| 诊断 | 异常与日志保留查询 ID、错误码、SQLState 与耗时；提供只读查询/节点诊断 API |
 | OpenTelemetry | 现代框架提供 `ActivitySource("NewLife.Presto")` |
 | 打包 | 强命名、SourceLink、符号包与 README.nuget.md |
 

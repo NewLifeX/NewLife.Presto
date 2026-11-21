@@ -72,14 +72,14 @@ var count = await cmd.ExecuteScalarAsync();
 | Connection string aliases | `Host`/`Server`/`Data Source`, `Catalog`/`Database`, `Schema`/`Owner`, and XCode-style keys |
 | PrestoDB / Trino headers | `Protocol=Presto` by default; `Protocol=Trino` or `TrinoHeaders=true` for Trino 351+ |
 | Session context | Catalog, schema, user, source, time zone, session properties and custom headers |
-| Authentication | Basic, JWT/Bearer and custom gateway headers, with secrets kept out of logs |
+| Authentication | Basic, JWT/Bearer, OAuth2 client credentials and custom gateway headers, with secrets kept out of logs |
 | TLS and proxies | Strict certificate validation by default; explicit trust switch for private CAs |
 | Shared HTTP transport | Reuses `HttpClient` per endpoint, with proxy, compression and timeouts |
 
 </details>
 
 <details>
-<summary><b>Query & Types</b> (6 items)</summary>
+<summary><b>Query & Types</b> (7 items)</summary>
 
 | Feature | What it gives you |
 |---------|-------------------|
@@ -88,7 +88,8 @@ var count = await cmd.ExecuteScalarAsync();
 | Transient retry | 429/502/503/504 retry with `Retry-After` or exponential backoff |
 | `@name` parameters | Client-side substitution that skips strings, identifiers and comments |
 | Type fidelity | Boolean, integer, decimal, date/time, timestamp with time zone, UUID, IP and binary |
-| Complex types | `array`/`map`/`row`/`json` are returned as raw strings in v1 |
+| Complex types | `array`/`map`/`row` default to raw strings; `ComplexTypes=Structured` returns `object[]` and dictionaries |
+| `DbBatch` (.NET 6+) | Sequential batch commands with summed affected rows and cancellation propagated to the whole batch |
 
 </details>
 
@@ -100,7 +101,7 @@ var count = await cmd.ExecuteScalarAsync();
 | `GetSchema` | `MetaDataCollections`, `Tables`, `Columns`, `DataTypes` |
 | XCode integration | Default driver switch with legacy fallback; no transaction, DDL or auto-increment claims |
 | Localization | 33 runtime languages, generated at compile time and AOT-safe |
-| Diagnostics | Query id, error code, SQLState and timing preserved in exceptions and logs |
+| Diagnostics | Query id, error code, SQLState and timing preserved in exceptions and logs; read-only query/node diagnostics API |
 | OpenTelemetry | `ActivitySource("NewLife.Presto")` on modern frameworks |
 | Packaging | Strong naming, SourceLink, symbol package and README.nuget.md |
 
