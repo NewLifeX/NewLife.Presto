@@ -50,6 +50,15 @@ cmd.Parameters.Add(new PrestoParameter("@minKey", 0));
 
 var count = await cmd.ExecuteScalarAsync();
 ```
+```csharp
+// Entity Framework Core (read-only)
+var options = new DbContextOptionsBuilder<MyDbContext>()
+    .UsePresto("Host=localhost;Port=8080;Catalog=hive;Schema=default;User=test")
+    .Options;
+
+// Entity Framework 6 (read-only)
+DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
+```
 
 ---
 
