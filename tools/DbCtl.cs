@@ -313,11 +313,13 @@ discovery-server.enabled=true
 discovery.uri=http://localhost:{port}
 query.max-memory=2GB
 query.max-memory-per-node=1GB
+query.max-total-memory=3GB
+query.max-total-memory-per-node=1GB
 """;
 
     var jvmArgs = isTrino
         ? $"-server -Xmx3G -XX:+ExitOnOutOfMemoryError -Dfile.encoding=UTF-8 -Dnode.environment=test -Dnode.id={engine}-dbctl-01 -Dnode.data-dir={Root}/data/{engine} -Dlog.levels-file={Root}/{dir}/etc/log.properties -Dlog.output-file={Root}/logs/{engine}-server.log -Dlog.enable-console=false -Dconfig={Root}/{dir}/etc/config.properties"
-        : $"-server -Xmx2G -XX:+ExitOnOutOfMemoryError -Dfile.encoding=UTF-8 --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED -Dnode.environment=test -Dnode.id={engine}-dbctl-01 -Dnode.data-dir={Root}/data/{engine} -Dlog.levels-file={Root}/{dir}/etc/log.properties -Dlog.path={Root}/logs/{engine}-server.log -Dlog.enable-console=false -Dconfig={Root}/{dir}/etc/config.properties";
+        : $"-server -Xmx2G -XX:+ExitOnOutOfMemoryError -Dfile.encoding=UTF-8 -Djdk.attach.allowAttachSelf=true --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED -Dnode.environment=test -Dnode.id={engine}-dbctl-01 -Dnode.data-dir={Root}/data/{engine} -Dlog.levels-file={Root}/{dir}/etc/log.properties -Dlog.path={Root}/logs/{engine}-server.log -Dlog.enable-console=false -Dconfig={Root}/{dir}/etc/config.properties";
 
     var script = $"""
 set -euo pipefail
