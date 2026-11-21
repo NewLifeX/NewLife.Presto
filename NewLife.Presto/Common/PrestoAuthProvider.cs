@@ -24,10 +24,7 @@ internal static class PrestoAuthProvider
         switch (options.Auth)
         {
             case PrestoAuth.Basic:
-                {
-                    var text = options.User + ":" + options.Password;
-                    return Task.FromResult<String?>("Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes(text)));
-                }
+                return Task.FromResult<String?>(BuildBasic(options));
             case PrestoAuth.Jwt:
                 {
                     var token = tokenProvider?.Invoke();
@@ -48,5 +45,15 @@ internal static class PrestoAuthProvider
             default:
                 return Task.FromResult<String?>(null);
         }
+    }
+
+    /// <summary>生成 Basic 认证头值</summary>
+    /// <param name="options">连接配置</param>
+    /// <returns>Authorization 头值</returns>
+    public static String BuildBasic(PrestoConnectionOptions options)
+    {
+        var text = options.User + ":" + options.Password;
+
+        return "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes(text));
     }
 }

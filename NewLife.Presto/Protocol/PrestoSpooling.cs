@@ -44,7 +44,11 @@ internal static class PrestoSpooling
             throw new PrestoException(Localization.Translate("Failed to parse the server response: {0}", ex.Message), ex);
         }
 
+#if NET6_0_OR_GREATER
+        return PrestoJson.ParseRowsUtf8(bytes);
+#else
         return PrestoJson.ParseRows(Encoding.UTF8.GetString(bytes));
+#endif
     }
 
     /// <summary>构造不支持的分段异常</summary>

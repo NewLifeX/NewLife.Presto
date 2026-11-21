@@ -536,11 +536,13 @@ public sealed class PrestoDataReader : DbDataReader
 
         var nextUri = _page.NextUri!;
 
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _executionToken);
+        // 调用方未提供可取消令牌时直接复用执行令牌，省去每页一个链接 CTS
+        using var linked = cancellationToken.CanBeCanceled ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _executionToken) : null;
+        var token = linked != null ? linked.Token : _executionToken;
         PrestoQueryResults results;
         try
         {
-            results = await _client.FetchAsync(nextUri, linked.Token).ConfigureAwait(false);
+            results = await _client.FetchAsync(nextUri, token).ConfigureAwait(false);
         }
         catch (OperationCanceledException ex) when (_timeoutCts?.IsCancellationRequested == true && !cancellationToken.IsCancellationRequested)
         {
@@ -605,6 +607,29 @@ internal static class PrestoValueConverter
             // 复杂类型在结构化模式下返回 Object[]/字典
             if (fieldType == typeof(Object)) return PrestoComplexValueParser.Parse(value, PrestoTypeSignature.Parse(column.Type))!;
 
+            // 值类型已与列类型一致时直接返回，避免数字与字符串往返转换（扫描大结果集的热路径）
+            if (value.GetType() == fieldType) return value;
+
+            // 数字列就近转换，语义与“文本再解析”一致，但不产生字符串
+            if (value is Int32 int32)
+            {
+                if (fieldType == typeof(Int64)) return (Int64)int32;
+                if (fieldType == typeof(Double)) return (Double)int32;
+                if (fieldType == typeof(Single)) return (Single)int32;
+                if (fieldType == typeof(Decimal)) return (Decimal)int32;
+                if (fieldType == typeof(Int16)) return (Int16)int32;
+                if (fieldType == typeof(SByte)) return checked((SByte)int32);
+            }
+            else if (value is Int64 int64)
+            {
+                if (fieldType == typeof(Int32)) return checked((Int32)int64);
+                if (fieldType == typeof(Double)) return (Double)int64;
+                if (fieldType == typeof(Single)) return (Single)int64;
+                if (fieldType == typeof(Decimal)) return (Decimal)int64;
+                if (fieldType == typeof(Int16)) return checked((Int16)int64);
+                if (fieldType == typeof(SByte)) return checked((SByte)int64);
+            }
+
             if (fieldType == typeof(String)) return PrestoJson.ToText(value)!;
             if (fieldType == typeof(Boolean)) return ToBoolean(value);
             if (fieldType == typeof(SByte)) return System.Convert.ToSByte(PrestoJson.ToText(value)!, CultureInfo.InvariantCulture);
@@ -654,8 +679,6 @@ internal static class PrestoValueConverter
 
     private static Boolean ToBoolean(Object value)
     {
-        if (value is Boolean b) return b;
-
         var text = PrestoJson.ToText(value);
         if (String.Equals(text, "true", StringComparison.OrdinalIgnoreCase) || text == "1") return true;
         if (String.Equals(text, "false", StringComparison.OrdinalIgnoreCase) || text == "0") return false;
@@ -665,8 +688,6 @@ internal static class PrestoValueConverter
 
     private static Single ToSingle(Object value)
     {
-        if (value is Single f) return f;
-
         var text = PrestoJson.ToText(value);
         if (String.Equals(text, "NaN", StringComparison.OrdinalIgnoreCase)) return Single.NaN;
         if (String.Equals(text, "Infinity", StringComparison.OrdinalIgnoreCase)) return Single.PositiveInfinity;
@@ -677,8 +698,6 @@ internal static class PrestoValueConverter
 
     private static Double ToDouble(Object value)
     {
-        if (value is Double d) return d;
-
         var text = PrestoJson.ToText(value);
         if (String.Equals(text, "NaN", StringComparison.OrdinalIgnoreCase)) return Double.NaN;
         if (String.Equals(text, "Infinity", StringComparison.OrdinalIgnoreCase)) return Double.PositiveInfinity;
@@ -689,8 +708,6 @@ internal static class PrestoValueConverter
 
     private static DateTime ToDateTime(Object value)
     {
-        if (value is DateTime dateTime) return dateTime;
-
         var text = PrestoJson.ToText(value)!;
         if (DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var result))
             return DateTime.SpecifyKind(result, DateTimeKind.Unspecified);
@@ -698,17 +715,10 @@ internal static class PrestoValueConverter
         return DateTime.Parse(text, CultureInfo.InvariantCulture, DateTimeStyles.None);
     }
 
-    private static DateTimeOffset ToDateTimeOffset(Object value)
-    {
-        if (value is DateTimeOffset offset) return offset;
-
-        return DateTimeOffset.Parse(PrestoJson.ToText(value)!, CultureInfo.InvariantCulture, DateTimeStyles.None);
-    }
+    private static DateTimeOffset ToDateTimeOffset(Object value) => DateTimeOffset.Parse(PrestoJson.ToText(value)!, CultureInfo.InvariantCulture, DateTimeStyles.None);
 
     private static TimeSpan ToTimeSpan(Object value)
     {
-        if (value is TimeSpan span) return span;
-
         var text = PrestoJson.ToText(value)!;
         var negative = text.StartsWith("-");
         var body = negative ? text[1..] : text;
@@ -725,10 +735,5 @@ internal static class PrestoValueConverter
         return TimeSpan.Parse(body, CultureInfo.InvariantCulture);
     }
 
-    private static Byte[] ToBytes(Object value)
-    {
-        if (value is Byte[] bytes) return bytes;
-
-        return PrestoJson.ToText(value).ToBase64()!;
-    }
+    private static Byte[] ToBytes(Object value) => PrestoJson.ToText(value).ToBase64()!;
 }

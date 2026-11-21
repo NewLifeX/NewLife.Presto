@@ -1,15 +1,17 @@
 using System.Collections.Generic;
 using System.Globalization;
+using System.Text;
 using NewLife.Serialization;
 
 namespace NewLife.Presto;
 
 /// <summary>Presto/Trino JSON 响应投影</summary>
 /// <remarks>
-/// 使用 NewLife.Core 的 <see cref="JsonParser"/> 字典模型，宽松解析：未知字段忽略、缺失字段使用默认值。
-/// 解析失败统一抛出 <see cref="PrestoException"/>，保留内部异常便于定位。
+/// `net6.0+` 使用 <c>Utf8JsonReader</c> 直接解析响应字节（见 <c>PrestoJsonStream</c>），
+/// 低版本框架使用 NewLife.Core 的 <see cref="JsonParser"/> 字典模型。
+/// 两种路径都宽松解析：未知字段忽略、缺失字段使用默认值；解析失败统一抛出 <see cref="PrestoException"/>。
 /// </remarks>
-internal static class PrestoJson
+internal static partial class PrestoJson
 {
     #region 解析
     /// <summary>解析 JSON 对象</summary>
@@ -58,6 +60,12 @@ internal static class PrestoJson
     /// <returns>查询结果</returns>
     public static PrestoQueryResults ParseResults(String? json, Boolean structured = false)
     {
+#if NET6_0_OR_GREATER
+        if (json.IsNullOrWhiteSpace()) throw new PrestoException(Localization.Translate("The server returned an empty response."));
+
+        // 现代目标走 UTF-8 流式解析，文本入口只做一次编码，保证与网络路径同一套语义
+        return ParseResultsUtf8(Encoding.UTF8.GetBytes(json), structured);
+#else
         var dic = ParseObject(json) ?? throw new PrestoException(Localization.Translate("The server returned an empty response."));
 
         var data = dic.TryGetValue("data", out var dataValue) ? dataValue : null;
@@ -77,6 +85,7 @@ internal static class PrestoJson
             UpdateType = GetString(dic, "updateType"),
             UpdateCount = GetNullableInt64(dic, "updateCount"),
         };
+#endif
     }
 
     /// <summary>解析服务端信息</summary>
@@ -181,6 +190,7 @@ internal static class PrestoJson
         };
     }
 
+#if !NET6_0_OR_GREATER
     /// <summary>解析警告列表</summary>
     /// <param name="value">警告数组</param>
     /// <returns>警告列表</returns>
@@ -235,18 +245,15 @@ internal static class PrestoJson
         var list = new List<IList<Object?>>();
         if (AsList(value) is not { } rows) return list;
 
+        // 行数组本身已实现 IList，直接复用，避免逐单元格复制
         foreach (var row in rows)
         {
-            var values = new List<Object?>();
-            if (AsList(row) is { } cells)
-            {
-                foreach (var cell in cells) values.Add(cell);
-            }
-            list.Add(values);
+            list.Add(AsList(row) ?? []);
         }
 
         return list;
     }
+#endif
 
     private static List<PrestoQuerySegment> ParseSegments(Object? value)
     {
@@ -297,10 +304,14 @@ internal static class PrestoJson
     {
         if (json.IsNullOrWhiteSpace()) return [];
 
+#if NET6_0_OR_GREATER
+        return ParseRowsUtf8(Encoding.UTF8.GetBytes(json));
+#else
         if (ParseArray(json) is not { } rows)
             throw new PrestoException(Localization.Translate("Failed to parse the server response: {0}", "expected a JSON array of rows"));
 
         return ParseData(rows);
+#endif
     }
 
     private static String? FormatLocation(Object? value)

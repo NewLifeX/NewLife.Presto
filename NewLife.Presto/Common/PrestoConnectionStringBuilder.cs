@@ -26,6 +26,9 @@ public sealed class PrestoConnectionStringBuilder : DbConnectionStringBuilder
     private static readonly String[] _scopeKeys = ["Scope", "OAuthScope"];
     private static readonly String[] _complexTypesKeys = ["ComplexTypes", "ComplexType", "StructuredTypes"];
     private static readonly String[] _spoolingKeys = ["Spooling", "SpoolingProtocol", "SpoolingEnabled"];
+    private static readonly String[] _sourceKeys = ["ApplicationName"];
+    private static readonly String[] _pathKeys = ["BasePath"];
+    private static readonly String[] _proxyKeys = ["HttpProxy"];
     #endregion
 
     #region 构造
@@ -46,6 +49,22 @@ public sealed class PrestoConnectionStringBuilder : DbConnectionStringBuilder
         {
             base.ConnectionString = value ?? String.Empty;
             Normalize();
+        }
+    }
+
+    /// <summary>按键读写。写入新键后下次读取重新归一化别名</summary>
+    /// <param name="keyword">键名</param>
+    /// <returns>键值</returns>
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP
+    [System.Diagnostics.CodeAnalysis.AllowNull]
+#endif
+    public override Object this[String keyword]
+    {
+        get => base[keyword];
+        set
+        {
+            base[keyword] = value;
+            _normalized = false;
         }
     }
 
@@ -456,8 +475,8 @@ public sealed class PrestoConnectionStringBuilder : DbConnectionStringBuilder
 
     private void Normalize()
     {
-        // 归一化可能经由任意属性访问触发，防止重入
-        if (_normalizing) return;
+        // 归一化可能经由任意属性访问触发，防止重入；一次赋值后只归一化一次
+        if (_normalizing || _normalized) return;
         _normalizing = true;
         try
         {
@@ -475,9 +494,9 @@ public sealed class PrestoConnectionStringBuilder : DbConnectionStringBuilder
             Move(_scopeKeys, "Scope");
             Move(_complexTypesKeys, "ComplexTypes");
             Move(_spoolingKeys, "Spooling");
-            Move(["ApplicationName"], "Source");
-            Move(["BasePath"], "Path");
-            Move(["HttpProxy"], "Proxy");
+            Move(_sourceKeys, "Source");
+            Move(_pathKeys, "Path");
+            Move(_proxyKeys, "Proxy");
 
             // TrinoHeaders 是常见写法，归一化为 Protocol
             if (ContainsKey("TrinoHeaders"))
@@ -486,6 +505,7 @@ public sealed class PrestoConnectionStringBuilder : DbConnectionStringBuilder
                 if (trino && !ContainsKey("Protocol")) this["Protocol"] = "Trino";
                 Remove("TrinoHeaders");
             }
+            _normalized = true;
         }
         finally
         {
@@ -516,6 +536,7 @@ public sealed class PrestoConnectionStringBuilder : DbConnectionStringBuilder
         : null;
 
     private Boolean _normalizing;
+    private Boolean _normalized;
 
     private Boolean GetBoolean(String key) => GetString(key).ToBoolean();
 
