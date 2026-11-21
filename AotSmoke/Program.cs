@@ -8,8 +8,8 @@ namespace AotSmoke;
 
 /// <summary>NewLife.Presto NativeAOT 冒烟探针。逐场景 PASS/FAIL，非零退出码即失败</summary>
 /// <remarks>
-/// 当前覆盖不依赖数据库的离线路径：程序集加载、连接字符串、协议头、类型映射、多语言与 JSON 解析。
-/// 附加 --no-db 与默认行为一致（暂无数据库场景），便于与其它 NewLife 仓库的 CI 参数保持一致。
+/// 默认覆盖不依赖数据库的离线路径：程序集加载、连接字符串、协议头、类型映射、多语言、JSON 解析、异常与参数绑定。
+/// 附加 --no-db 与默认行为一致；附加 <c>--connstr</c> 时额外执行真库场景（S9），验证 AOT 下的 HTTP 与结果解析链路。
 /// </remarks>
 static class Program
 {
@@ -26,7 +26,8 @@ static class Program
         try { Console.OutputEncoding = Encoding.UTF8; } catch { /* 部分终端不支持设置编码 */ }
 
         var noDb = args.Contains("--no-db");
-        Console.WriteLine($"[Env] AOT={!System.Runtime.CompilerServices.RuntimeFeature.IsDynamicCodeSupported} NoDb={noDb}");
+        var connectionString = GetArgument(args, "--connstr");
+        Console.WriteLine($"[Env] AOT={!System.Runtime.CompilerServices.RuntimeFeature.IsDynamicCodeSupported} NoDb={noDb} Db={!connectionString.IsNullOrEmpty()}");
         Console.WriteLine($"[Env] Driver={typeof(PrestoDriver).Assembly.GetName().Version}");
 
         Run("S1 Assembly", () =>
@@ -104,6 +105,32 @@ static class Program
             Assert(PrestoUnsupported.Transactions() is NotSupportedException, "transactions");
         });
 
+        Run("S8 ParameterBinder", () =>
+        {
+            var parameters = new PrestoParameterCollection { new PrestoParameter("@id", 1) };
+            var sql = PrestoParameterBinder.Bind("select @id, '@id'", parameters);
+            Assert(sql == "select 1, '@id'", "bind");
+            Assert(PrestoParameterBinder.FormatValue(new DateTime(2020, 1, 2, 3, 4, 5, 6)).StartsWith("TIMESTAMP"), "datetime");
+            Assert(PrestoParameterBinder.FormatValue(new Byte[] { 1, 2 }) == "X'0102'", "binary");
+        });
+
+        if (!connectionString.IsNullOrEmpty())
+        {
+            Run("S9 RealServer", () =>
+            {
+                using var connection = new PrestoConnection(connectionString);
+                connection.Open();
+
+                using var command = connection.CreateCommand("select 1 as n, 'x' as s");
+                using var reader = command.ExecuteReader();
+                Assert(reader.Read(), "row");
+                Assert(reader.GetInt32(0) == 1, "n");
+                Assert(reader.GetString(1) == "x", "s");
+                Assert(!reader.Read(), "single row");
+                Assert(!connection.ServerVersion.IsNullOrEmpty(), "server version");
+            });
+        }
+
         Console.WriteLine();
         if (_fail > 0)
         {
@@ -132,5 +159,12 @@ static class Program
     private static void Assert(Boolean condition, String message)
     {
         if (!condition) throw new InvalidOperationException(message);
+    }
+
+    private static String GetArgument(String[] args, String name)
+    {
+        var index = Array.IndexOf(args, name);
+
+        return index >= 0 && index + 1 < args.Length ? args[index + 1] : String.Empty;
     }
 }
