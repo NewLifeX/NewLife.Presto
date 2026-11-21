@@ -29,6 +29,29 @@ internal static class PrestoJson
         }
     }
 
+    /// <summary>解析 JSON 数组</summary>
+    /// <param name="json">JSON 文本</param>
+    /// <returns>数组；空文本或非数组返回空</returns>
+    public static IList<Object?>? ParseArray(String? json)
+    {
+        if (json.IsNullOrWhiteSpace()) return null;
+
+        var text = json.Trim();
+        if (text.Length == 0 || text[0] != '[') return null;
+
+        try
+        {
+            // JsonParser.Decode 只接受对象，包一层对象再取数组
+            var dic = JsonParser.Decode("{\"items\":" + text + "}");
+
+            return dic != null && dic.TryGetValue("items", out var value) ? value as IList<Object?> : null;
+        }
+        catch (Exception ex)
+        {
+            throw new PrestoException(Localization.Translate("Failed to parse the server response: {0}", ex.Message), ex);
+        }
+    }
+
     /// <summary>解析单页查询结果</summary>
     /// <param name="json">JSON 文本</param>
     /// <returns>查询结果</returns>
@@ -58,6 +81,16 @@ internal static class PrestoJson
     {
         var dic = ParseObject(json) ?? throw new PrestoException(Localization.Translate("The server returned an empty response."));
 
+        return ParseServerInfo(dic);
+    }
+
+    /// <summary>解析服务端信息</summary>
+    /// <param name="value">已解析的对象</param>
+    /// <returns>服务端信息</returns>
+    public static PrestoServerInfo ParseServerInfo(Object? value)
+    {
+        var dic = AsDictionary(value) ?? throw new PrestoException(Localization.Translate("The server returned an empty response."));
+
         var version = GetString(dic, "nodeVersion");
         if (version.IsNullOrEmpty() && dic.TryGetValue("nodeVersion", out var node) && AsDictionary(node) is { } nodeDic)
             version = GetString(nodeDic, "version");
@@ -69,6 +102,31 @@ internal static class PrestoJson
             Coordinator = GetNullableBoolean(dic, "coordinator"),
             Starting = GetNullableBoolean(dic, "starting"),
             Uptime = GetString(dic, "uptime"),
+            Raw = dic,
+        };
+    }
+
+    /// <summary>解析查询诊断信息</summary>
+    /// <param name="value">查询对象</param>
+    /// <returns>查询信息</returns>
+    public static PrestoQueryInfo ParseQueryInfo(Object? value)
+    {
+        var dic = AsDictionary(value) ?? throw new PrestoException(Localization.Translate("The server returned an empty response."));
+        var session = dic.TryGetValue("session", out var sessionValue) ? AsDictionary(sessionValue) : null;
+        var stats = dic.TryGetValue("queryStats", out var queryStats) ? queryStats : dic.TryGetValue("stats", out var statsValue) ? statsValue : null;
+        var error = dic.TryGetValue("errorInfo", out var errorInfo) ? errorInfo : dic.TryGetValue("error", out var errorValue) ? errorValue : null;
+
+        return new PrestoQueryInfo
+        {
+            Id = GetString(dic, "queryId") ?? GetString(dic, "id"),
+            State = GetString(dic, "state"),
+            Query = GetString(dic, "query"),
+            User = GetString(session, "user"),
+            Source = GetString(session, "source"),
+            Catalog = GetString(session, "catalog"),
+            Schema = GetString(session, "schema"),
+            Stats = ParseStats(stats),
+            Error = error == null ? null : ParseError(error),
             Raw = dic,
         };
     }

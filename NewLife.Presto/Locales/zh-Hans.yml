@@ -54,3 +54,4 @@
 "Failed to acquire an OAuth2 access token: HTTP {0}.": "获取 OAuth2 访问令牌失败：HTTP {0}。"
 "The OAuth2 token endpoint returned an empty response.": "OAuth2 令牌端点返回了空响应。"
 "The OAuth2 token endpoint returned no access token.": "OAuth2 令牌端点未返回访问令牌。"
+"Query id cannot be empty.": "查询编号不能为空。"

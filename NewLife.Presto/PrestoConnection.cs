@@ -275,6 +275,50 @@ public sealed class PrestoConnection : DbConnection
 
         return info;
     }
+
+    /// <summary>获取查询列表</summary>
+    /// <returns>查询信息列表</returns>
+    public IList<PrestoQueryInfo> GetQueries() => GetQueriesAsync(CancellationToken.None).GetAwaiter().GetResult();
+
+    /// <summary>获取查询列表</summary>
+    /// <param name="cancellationToken">取消令牌</param>
+    /// <returns>查询信息列表</returns>
+    public async Task<IList<PrestoQueryInfo>> GetQueriesAsync(CancellationToken cancellationToken)
+    {
+        EnsureOpen();
+
+        return await CreateStatementClient().GetQueriesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>获取单个查询详情</summary>
+    /// <param name="queryId">查询编号</param>
+    /// <returns>查询信息</returns>
+    public PrestoQueryInfo GetQueryInfo(String queryId) => GetQueryInfoAsync(queryId, CancellationToken.None).GetAwaiter().GetResult();
+
+    /// <summary>获取单个查询详情</summary>
+    /// <param name="queryId">查询编号</param>
+    /// <param name="cancellationToken">取消令牌</param>
+    /// <returns>查询信息</returns>
+    public async Task<PrestoQueryInfo> GetQueryInfoAsync(String queryId, CancellationToken cancellationToken)
+    {
+        EnsureOpen();
+
+        return await CreateStatementClient().GetQueryInfoAsync(queryId, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>获取节点列表</summary>
+    /// <returns>节点信息列表</returns>
+    public IList<PrestoServerInfo> GetNodes() => GetNodesAsync(CancellationToken.None).GetAwaiter().GetResult();
+
+    /// <summary>获取节点列表</summary>
+    /// <param name="cancellationToken">取消令牌</param>
+    /// <returns>节点信息列表</returns>
+    public async Task<IList<PrestoServerInfo>> GetNodesAsync(CancellationToken cancellationToken)
+    {
+        EnsureOpen();
+
+        return await CreateStatementClient().GetNodesAsync(cancellationToken).ConfigureAwait(false);
+    }
     #endregion
 
     #region 内部协作

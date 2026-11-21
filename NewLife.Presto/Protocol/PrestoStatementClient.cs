@@ -147,30 +147,100 @@ internal sealed class PrestoStatementClient
         using var span = PrestoDiagnostics.StartFetch(_options, uri);
         try
         {
-            var attempt = 0;
-            while (true)
+            var body = await GetBodyAsync(uri, cancellationToken).ConfigureAwait(false);
+
+            return PrestoJson.ParseServerInfo(body);
+        }
+        catch (Exception ex)
+        {
+            span.SetError(ex);
+            throw;
+        }
+    }
+
+    /// <summary>获取查询列表</summary>
+    /// <param name="cancellationToken">取消令牌</param>
+    /// <returns>查询信息列表</returns>
+    public async Task<IList<PrestoQueryInfo>> GetQueriesAsync(CancellationToken cancellationToken)
+    {
+        var uri = new Uri(_options.BaseAddress, "v1/query");
+        using var span = PrestoDiagnostics.StartFetch(_options, uri);
+        try
+        {
+            var body = await GetBodyAsync(uri, cancellationToken).ConfigureAwait(false);
+            var items = PrestoJson.ParseArray(body);
+
+            var list = new List<PrestoQueryInfo>();
+            if (items != null)
             {
-                using var request = await CreateRequestAsync(HttpMethod.Get, uri, cancellationToken).ConfigureAwait(false);
-                using var response = await SendOnceAsync(request, cancellationToken).ConfigureAwait(false);
-
-                var status = (Int32)response.StatusCode;
-                if (PrestoRetryPolicy.IsTransient(status) && attempt < _retry.MaxRetries)
+                foreach (var item in items)
                 {
-                    var delay = _retry.GetDelay(response, attempt + 1);
-                    attempt++;
-                    _log?.Debug("Retrying request after HTTP {0}; attempt {1} of {2}.", status, attempt, _retry.MaxRetries);
+                    if (item == null) continue;
 
-                    if (delay > TimeSpan.Zero) await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
-                    continue;
+                    list.Add(PrestoJson.ParseQueryInfo(item));
                 }
-
-                var body = await ReadBodyAsync(response, cancellationToken).ConfigureAwait(false);
-                _session.ApplyResponseHeaders(response);
-
-                if (!response.IsSuccessStatusCode) throw CreateHttpException(uri, response, body);
-
-                return PrestoJson.ParseServerInfo(body);
             }
+
+            return list;
+        }
+        catch (Exception ex)
+        {
+            span.SetError(ex);
+            throw;
+        }
+    }
+
+    /// <summary>获取单个查询详情</summary>
+    /// <param name="queryId">查询编号</param>
+    /// <param name="cancellationToken">取消令牌</param>
+    /// <returns>查询信息</returns>
+    public async Task<PrestoQueryInfo> GetQueryInfoAsync(String queryId, CancellationToken cancellationToken)
+    {
+        if (queryId.IsNullOrWhiteSpace()) throw new ArgumentException(Localization.Translate("Query id cannot be empty."), nameof(queryId));
+
+        var uri = new Uri(_options.BaseAddress, "v1/query/" + Uri.EscapeDataString(queryId));
+        using var span = PrestoDiagnostics.StartFetch(_options, uri);
+        try
+        {
+            var body = await GetBodyAsync(uri, cancellationToken).ConfigureAwait(false);
+
+            return PrestoJson.ParseQueryInfo(PrestoJson.ParseObject(body));
+        }
+        catch (Exception ex)
+        {
+            span.SetError(ex);
+            throw;
+        }
+    }
+
+    /// <summary>获取节点列表</summary>
+    /// <param name="cancellationToken">取消令牌</param>
+    /// <returns>节点信息列表</returns>
+    /// <remarks>Trino 返回节点数组，PrestoDB 返回单个节点对象；两种形态都归一化为列表</remarks>
+    public async Task<IList<PrestoServerInfo>> GetNodesAsync(CancellationToken cancellationToken)
+    {
+        var uri = new Uri(_options.BaseAddress, "v1/node");
+        using var span = PrestoDiagnostics.StartFetch(_options, uri);
+        try
+        {
+            var body = await GetBodyAsync(uri, cancellationToken).ConfigureAwait(false);
+
+            var list = new List<PrestoServerInfo>();
+            var items = PrestoJson.ParseArray(body);
+            if (items == null)
+            {
+                list.Add(PrestoJson.ParseServerInfo(body));
+                return list;
+            }
+
+            foreach (var item in items)
+            {
+                if (item == null) continue;
+
+                list.Add(PrestoJson.ParseServerInfo(item));
+            }
+
+            return list;
         }
         catch (Exception ex)
         {
@@ -243,6 +313,36 @@ internal sealed class PrestoStatementClient
         catch (OperationCanceledException ex) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
             throw PrestoException.ConnectionTimeout(_options.ConnectionTimeout, ex);
+        }
+    }
+
+    /// <summary>发送只读 GET 请求，瞬态错误按策略重试</summary>
+    private async Task<String> GetBodyAsync(Uri uri, CancellationToken cancellationToken)
+    {
+        var attempt = 0;
+        while (true)
+        {
+            using var request = await CreateRequestAsync(HttpMethod.Get, uri, cancellationToken).ConfigureAwait(false);
+            using var response = await SendOnceAsync(request, cancellationToken).ConfigureAwait(false);
+
+            var status = (Int32)response.StatusCode;
+            if (PrestoRetryPolicy.IsTransient(status) && attempt < _retry.MaxRetries)
+            {
+                var delay = _retry.GetDelay(response, attempt + 1);
+                _session.ApplyResponseHeaders(response);
+                attempt++;
+                _log?.Debug("Retrying request after HTTP {0}; attempt {1} of {2}.", status, attempt, _retry.MaxRetries);
+
+                if (delay > TimeSpan.Zero) await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                continue;
+            }
+
+            var body = await ReadBodyAsync(response, cancellationToken).ConfigureAwait(false);
+            _session.ApplyResponseHeaders(response);
+
+            if (!response.IsSuccessStatusCode) throw CreateHttpException(uri, response, body);
+
+            return body;
         }
     }
 

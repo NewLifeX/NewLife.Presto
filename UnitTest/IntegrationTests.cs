@@ -31,6 +31,7 @@ public class IntegrationTests
         Parameters(connection);
         Paging(connection);
         Metadata(connection);
+        Diagnostics(connection);
         ErrorMapping(connection);
     }
 
@@ -88,6 +89,27 @@ public class IntegrationTests
         var names = columns.Rows.Cast<DataRow>().Select(e => (String)e["COLUMN_NAME"]).ToArray();
         Assert.Contains("nationkey", names);
         Assert.Contains("name", names);
+    }
+
+    private static void Diagnostics(PrestoConnection connection)
+    {
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "select 1";
+            Assert.Equal(1, command.ExecuteScalar());
+
+            var queryId = command.LastQueryId!;
+            var info = connection.GetQueryInfo(queryId);
+            Assert.Equal(queryId, info.Id);
+            Assert.False(info.State.IsNullOrEmpty());
+        }
+
+        var node = connection.GetNodes();
+
+        Assert.NotNull(node);
+
+        // 部分发行版限制查询列表接口，返回空集合也算可用
+        Assert.NotNull(connection.GetQueries());
     }
 
     private static void ErrorMapping(PrestoConnection connection)
