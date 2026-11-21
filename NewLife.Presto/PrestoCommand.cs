@@ -123,7 +123,33 @@ public sealed class PrestoCommand : DbCommand
     #region 执行
     /// <summary>执行非查询命令</summary>
     /// <returns>受影响行数；无法判断时为 -1</returns>
-    public override Int32 ExecuteNonQuery() => ExecuteNonQueryAsync(CancellationToken.None).GetAwaiter().GetResult();
+    public override Int32 ExecuteNonQuery()
+    {
+        using var reader = ExecuteReaderCore(CommandBehavior.Default, CancellationToken.None);
+
+        var count = reader.RecordsAffected;
+        if (count < 0 && reader.FieldCount == 1 && reader.GetName(0).EqualIgnoreCase("rows"))
+        {
+            if (reader.Read())
+            {
+                var value = reader.GetValue(0);
+                if (value != DBNull.Value)
+                {
+                    var result = System.Convert.ToInt64(value, CultureInfo.InvariantCulture);
+                    count = result > Int32.MaxValue ? Int32.MaxValue : (Int32)result;
+                }
+            }
+        }
+        else
+        {
+            while (reader.Read()) { }
+            count = reader.RecordsAffected;
+        }
+
+        if (count < 0 && !reader.UpdateType.IsNullOrEmpty()) count = 0;
+
+        return count;
+    }
 
     /// <summary>执行非查询命令</summary>
     /// <param name="cancellationToken">取消令牌</param>
@@ -158,7 +184,15 @@ public sealed class PrestoCommand : DbCommand
 
     /// <summary>执行查询并返回首行首列</summary>
     /// <returns>首行首列；无数据时为 null</returns>
-    public override Object? ExecuteScalar() => ExecuteScalarAsync(CancellationToken.None).GetAwaiter().GetResult();
+    public override Object? ExecuteScalar()
+    {
+        using var reader = ExecuteReaderCore(CommandBehavior.Default, CancellationToken.None);
+
+        if (reader.FieldCount == 0) return null;
+        if (!reader.Read()) return null;
+
+        return reader.GetValue(0);
+    }
 
     /// <summary>执行查询并返回首行首列</summary>
     /// <param name="cancellationToken">取消令牌</param>
@@ -177,7 +211,7 @@ public sealed class PrestoCommand : DbCommand
     /// <param name="behavior">命令行为</param>
     /// <returns>读取器</returns>
     protected override DbDataReader ExecuteDbDataReader(CommandBehavior behavior)
-        => ExecuteReaderCoreAsync(behavior, CancellationToken.None).GetAwaiter().GetResult();
+        => ExecuteReaderCore(behavior, CancellationToken.None);
 
     /// <summary>执行查询并返回读取器</summary>
     /// <param name="behavior">命令行为</param>
@@ -189,7 +223,7 @@ public sealed class PrestoCommand : DbCommand
     private async Task<DbDataReader> ExecuteReaderCoreCoreAsync(CommandBehavior behavior, CancellationToken cancellationToken)
         => await ExecuteReaderCoreAsync(behavior, cancellationToken).ConfigureAwait(false);
 
-    private async Task<PrestoDataReader> ExecuteReaderCoreAsync(CommandBehavior behavior, CancellationToken cancellationToken)
+    private (PrestoConnection Connection, String Sql, Int32 Timeout, CancellationTokenSource Cancellation, CancellationTokenSource? TimeoutSource) PrepareExecution(CommandBehavior behavior, CancellationToken cancellationToken)
     {
         var connection = _connection;
         if (connection == null || connection.State != ConnectionState.Open)
@@ -209,23 +243,66 @@ public sealed class PrestoCommand : DbCommand
         _timeoutSource = timeoutSource;
         _client = connection.CreateStatementClient();
 
+        return (connection, sql, timeout, cancellation, timeoutSource);
+    }
+
+    private async Task<PrestoDataReader> ExecuteReaderCoreAsync(CommandBehavior behavior, CancellationToken cancellationToken)
+    {
+        var (connection, sql, timeout, cancellation, timeoutSource) = PrepareExecution(behavior, cancellationToken);
+
         try
         {
-            var results = await _client.SubmitAsync(sql, cancellation.Token).ConfigureAwait(false);
+            var client = _client!;
+            var results = await client.SubmitAsync(sql, cancellation.Token).ConfigureAwait(false);
 
             // 真实服务端的首包是 QUEUED/RUNNING，不含列定义；推进到出现列或查询结束，否则读取器拿不到字段
-            results = await FetchToColumnsAsync(_client, results, cancellation.Token).ConfigureAwait(false);
+            results = await FetchToColumnsAsync(client, results, cancellation.Token).ConfigureAwait(false);
             _lastQueryId = results.Id ?? _lastQueryId;
 
             if ((behavior & CommandBehavior.SchemaOnly) != 0)
             {
                 // 只需要列信息，拿到列定义后立即取消，避免服务端继续计算数据
-                await _client.CancelAsync().ConfigureAwait(false);
+                await client.CancelAsync().ConfigureAwait(false);
             }
 
             connection.RegisterCommand(this);
 
-            return new PrestoDataReader(_client, this, results, behavior, cancellation.Token, timeoutSource, timeout);
+            return new PrestoDataReader(client, this, results, behavior, cancellation.Token, timeoutSource, timeout);
+        }
+        catch (OperationCanceledException ex) when (timeoutSource?.IsCancellationRequested == true && !cancellationToken.IsCancellationRequested)
+        {
+            DisposeExecution();
+            throw PrestoException.CommandTimeout(timeout, ex);
+        }
+        catch
+        {
+            DisposeExecution();
+            throw;
+        }
+    }
+
+    private PrestoDataReader ExecuteReaderCore(CommandBehavior behavior, CancellationToken cancellationToken)
+    {
+        var (connection, sql, timeout, cancellation, timeoutSource) = PrepareExecution(behavior, cancellationToken);
+
+        try
+        {
+            var client = _client!;
+            var results = client.Submit(sql, cancellation.Token);
+
+            // 真实服务端的首包是 QUEUED/RUNNING，不含列定义；推进到出现列或查询结束，否则读取器拿不到字段
+            results = FetchToColumns(client, results, cancellation.Token);
+            _lastQueryId = results.Id ?? _lastQueryId;
+
+            if ((behavior & CommandBehavior.SchemaOnly) != 0)
+            {
+                // 只需要列信息，拿到列定义后立即取消，避免服务端继续计算数据
+                client.CancelAsync().GetAwaiter().GetResult();
+            }
+
+            connection.RegisterCommand(this);
+
+            return new PrestoDataReader(client, this, results, behavior, cancellation.Token, timeoutSource, timeout);
         }
         catch (OperationCanceledException ex) when (timeoutSource?.IsCancellationRequested == true && !cancellationToken.IsCancellationRequested)
         {
@@ -246,6 +323,17 @@ public sealed class PrestoCommand : DbCommand
         while (results.Columns.Count == 0 && !results.NextUri.IsNullOrEmpty())
         {
             results = await client.FetchAsync(results.NextUri!, cancellationToken).ConfigureAwait(false);
+        }
+
+        return results;
+    }
+
+    /// <summary>按页推进，直到出现列定义或查询结束（同步）</summary>
+    private static PrestoQueryResults FetchToColumns(PrestoStatementClient client, PrestoQueryResults results, CancellationToken cancellationToken)
+    {
+        while (results.Columns.Count == 0 && !results.NextUri.IsNullOrEmpty())
+        {
+            results = client.Fetch(results.NextUri!, cancellationToken);
         }
 
         return results;

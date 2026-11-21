@@ -64,6 +64,23 @@ internal sealed class PrestoResponseBody : IDisposable
 #endif
     }
 
+    /// <summary>同步读取响应体</summary>
+    /// <param name="response">HTTP 响应</param>
+    /// <param name="cancellationToken">取消令牌</param>
+    /// <returns>响应体</returns>
+    public static PrestoResponseBody Read(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        if (response?.Content == null) return new PrestoResponseBody();
+
+#if NET6_0_OR_GREATER
+        var (buffer, length) = ReadBytes(response.Content, cancellationToken);
+
+        return new PrestoResponseBody { _buffer = buffer, _length = length };
+#else
+        return ReadAsync(response, cancellationToken).GetAwaiter().GetResult();
+#endif
+    }
+
     /// <summary>解析分段中的行数组</summary>
     /// <returns>行列表</returns>
     public IList<IList<Object?>> ParseRows()
@@ -96,6 +113,41 @@ internal sealed class PrestoResponseBody : IDisposable
 
     #region 读取
 #if NET6_0_OR_GREATER
+    private static (Byte[] Buffer, Int32 Length) ReadBytes(HttpContent content, CancellationToken cancellationToken)
+    {
+        var length = content.Headers.ContentLength;
+        var capacity = length is > 0 and <= Int32.MaxValue ? (Int32)length.Value : 4096;
+        var buffer = ArrayPool<Byte>.Shared.Rent(capacity);
+        var total = 0;
+
+        try
+        {
+            using var stream = content.ReadAsStream(cancellationToken);
+            while (true)
+            {
+                if (total == buffer.Length)
+                {
+                    var larger = ArrayPool<Byte>.Shared.Rent(buffer.Length * 2);
+                    Buffer.BlockCopy(buffer, 0, larger, 0, total);
+                    ArrayPool<Byte>.Shared.Return(buffer);
+                    buffer = larger;
+                }
+
+                var read = stream.Read(buffer, total, buffer.Length - total);
+                if (read <= 0) break;
+
+                total += read;
+            }
+
+            return (buffer, total);
+        }
+        catch
+        {
+            ArrayPool<Byte>.Shared.Return(buffer);
+            throw;
+        }
+    }
+
     private static async Task<(Byte[] Buffer, Int32 Length)> ReadBytesAsync(HttpContent content, CancellationToken cancellationToken)
     {
         var length = content.Headers.ContentLength;

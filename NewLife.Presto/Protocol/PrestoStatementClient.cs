@@ -23,6 +23,8 @@ internal sealed class PrestoStatementClient
     private String? _nextUri;
     private Boolean _completed;
     private String? _basicAuthorization;
+    private Task<String?>? _basicAuthTask;
+    private Boolean _syncUnsupported;
     private static readonly String _userAgent = "NewLife.Presto/" + PrestoDriver.Version;
     #endregion
 
@@ -54,8 +56,8 @@ internal sealed class PrestoStatementClient
         _client = client ?? throw new ArgumentNullException(nameof(client));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _session = session ?? throw new ArgumentNullException(nameof(session));
-        _retry = new PrestoRetryPolicy(options.MaxRetries, options.RetryInterval);
-        _submitUri = new Uri(options.BaseAddress, "v1/statement");
+        _retry = options.RetryPolicy;
+        _submitUri = options.SubmitUri;
         _log = log;
     }
     #endregion
@@ -71,7 +73,8 @@ internal sealed class PrestoStatementClient
         using var span = PrestoDiagnostics.StartExecute(_options, sql);
         try
         {
-            using var request = await CreateRequestAsync(HttpMethod.Post, uri, cancellationToken).ConfigureAwait(false);
+            var authorization = await GetAuthorizationAsync(cancellationToken).ConfigureAwait(false);
+            using var request = CreateRequestCore(HttpMethod.Post, uri, authorization);
             request.Content = new StringContent(sql, Encoding.UTF8, "text/plain");
 
             using var response = await SendOnceAsync(request, cancellationToken).ConfigureAwait(false);
@@ -108,7 +111,8 @@ internal sealed class PrestoStatementClient
             var attempt = 0;
             while (true)
             {
-                using var request = await CreateRequestAsync(HttpMethod.Get, uri, cancellationToken).ConfigureAwait(false);
+                var authorization = await GetAuthorizationAsync(cancellationToken).ConfigureAwait(false);
+                using var request = CreateRequestCore(HttpMethod.Get, uri, authorization);
                 using var response = await SendOnceAsync(request, cancellationToken).ConfigureAwait(false);
 
                 var status = (Int32)response.StatusCode;
@@ -130,6 +134,124 @@ internal sealed class PrestoStatementClient
 
                 var results = body.ParseResults(_options.ComplexTypes == PrestoComplexType.Structured);
                 await ResolveSegmentsAsync(results, cancellationToken).ConfigureAwait(false);
+                Apply(results);
+
+                if (results.Error != null) throw CreateQueryException(results);
+
+                return results;
+            }
+        }
+        catch (Exception ex)
+        {
+            span.SetError(ex);
+            throw;
+        }
+    }
+
+    /// <summary>同步提交 SQL 语句</summary>
+    /// <param name="sql">SQL 文本</param>
+    /// <param name="cancellationToken">取消令牌</param>
+    /// <returns>首个结果页</returns>
+    public PrestoQueryResults Submit(String sql, CancellationToken cancellationToken)
+    {
+        if (!_syncUnsupported)
+        {
+            try
+            {
+                return SubmitSync(sql, cancellationToken);
+            }
+            catch (NotSupportedException)
+            {
+                // 自定义 HttpMessageHandler 未实现同步 Send，后续统一回退异步通道
+                _syncUnsupported = true;
+            }
+        }
+
+        return SubmitAsync(sql, cancellationToken).GetAwaiter().GetResult();
+    }
+
+    private PrestoQueryResults SubmitSync(String sql, CancellationToken cancellationToken)
+    {
+        var uri = _submitUri;
+        using var span = PrestoDiagnostics.StartExecute(_options, sql);
+        try
+        {
+            using var request = CreateRequest(HttpMethod.Post, uri, cancellationToken);
+            request.Content = new StringContent(sql, Encoding.UTF8, "text/plain");
+
+            using var response = SendOnce(request, cancellationToken);
+            using var body = PrestoResponseBody.Read(response, cancellationToken);
+            _session.ApplyResponseHeaders(response);
+
+            if (!response.IsSuccessStatusCode) throw CreateHttpException(uri, response, body.GetText());
+
+            var results = body.ParseResults(_options.ComplexTypes == PrestoComplexType.Structured);
+            ResolveSegments(results, cancellationToken);
+            Apply(results);
+
+            if (results.Error != null) throw CreateQueryException(results);
+
+            return results;
+        }
+        catch (Exception ex)
+        {
+            span.SetError(ex);
+            throw;
+        }
+    }
+
+    /// <summary>同步拉取下一页</summary>
+    /// <param name="nextUri">下一页地址</param>
+    /// <param name="cancellationToken">取消令牌</param>
+    /// <returns>结果页</returns>
+    public PrestoQueryResults Fetch(String nextUri, CancellationToken cancellationToken)
+    {
+        if (!_syncUnsupported)
+        {
+            try
+            {
+                return FetchSync(nextUri, cancellationToken);
+            }
+            catch (NotSupportedException)
+            {
+                _syncUnsupported = true;
+            }
+        }
+
+        return FetchAsync(nextUri, cancellationToken).GetAwaiter().GetResult();
+    }
+
+    private PrestoQueryResults FetchSync(String nextUri, CancellationToken cancellationToken)
+    {
+        var uri = ResolveUri(nextUri);
+        using var span = PrestoDiagnostics.StartFetch(_options, uri);
+        try
+        {
+            var attempt = 0;
+            while (true)
+            {
+                using var request = CreateRequest(HttpMethod.Get, uri, cancellationToken);
+                using var response = SendOnce(request, cancellationToken);
+
+                var status = (Int32)response.StatusCode;
+                if (PrestoRetryPolicy.IsTransient(status) && attempt < _retry.MaxRetries)
+                {
+                    var delay = _retry.GetDelay(response, attempt + 1);
+                    _session.ApplyResponseHeaders(response);
+                    attempt++;
+                    _log?.Debug("Retrying request after HTTP {0}; attempt {1} of {2}.", status, attempt, _retry.MaxRetries);
+
+                    if (delay > TimeSpan.Zero) Task.Delay(delay, cancellationToken).GetAwaiter().GetResult();
+                    continue;
+                }
+
+                using var body = PrestoResponseBody.Read(response, cancellationToken);
+                _session.ApplyResponseHeaders(response);
+
+                if (!response.IsSuccessStatusCode) throw CreateHttpException(uri, response, body.GetText());
+
+                var results = body.ParseResults(_options.ComplexTypes == PrestoComplexType.Structured);
+                ResolveSegments(results, cancellationToken);
                 Apply(results);
 
                 if (results.Error != null) throw CreateQueryException(results);
@@ -345,7 +467,8 @@ internal sealed class PrestoStatementClient
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-            using var request = await CreateRequestAsync(HttpMethod.Delete, ResolveUri(next!), cts.Token).ConfigureAwait(false);
+            var authorization = await GetAuthorizationAsync(cts.Token).ConfigureAwait(false);
+            using var request = CreateRequestCore(HttpMethod.Delete, ResolveUri(next!), authorization);
             using var response = await _client.SendAsync(request, cts.Token).ConfigureAwait(false);
             _session.ApplyResponseHeaders(response);
         }
@@ -368,12 +491,27 @@ internal sealed class PrestoStatementClient
     private Task<String?> GetAuthorizationAsync(CancellationToken cancellationToken)
     {
         // Basic 认证头只与连接凭据有关，按语句客户端缓存，避免每次请求重复 Base64
-        if (_options.Auth == PrestoAuth.Basic) return Task.FromResult<String?>(_basicAuthorization ??= PrestoAuthProvider.BuildBasic(_options));
+        if (_options.Auth == PrestoAuth.Basic) return _basicAuthTask ??= Task.FromResult<String?>(_basicAuthorization ??= PrestoAuthProvider.BuildBasic(_options));
 
         return PrestoAuthProvider.GetAuthorizationAsync(_options, AccessTokenProvider, OAuthTokenProvider, cancellationToken);
     }
 
-    private async Task<HttpRequestMessage> CreateRequestAsync(HttpMethod method, Uri uri, CancellationToken cancellationToken)
+    private String? GetAuthorization(CancellationToken cancellationToken)
+    {
+        // Basic 认证头只与连接凭据有关，按语句客户端缓存，避免每次请求重复 Base64
+        if (_options.Auth == PrestoAuth.Basic) return _basicAuthorization ??= PrestoAuthProvider.BuildBasic(_options);
+
+        // OAuth2 可能需要在令牌端点做异步请求，同步路径阻塞等待
+        if (_options.Auth == PrestoAuth.OAuth2)
+            return PrestoAuthProvider.GetAuthorizationAsync(_options, AccessTokenProvider, OAuthTokenProvider, cancellationToken).GetAwaiter().GetResult();
+
+        return PrestoAuthProvider.GetAuthorization(_options, AccessTokenProvider);
+    }
+
+    private HttpRequestMessage CreateRequest(HttpMethod method, Uri uri, CancellationToken cancellationToken)
+        => CreateRequestCore(method, uri, GetAuthorization(cancellationToken));
+
+    private HttpRequestMessage CreateRequestCore(HttpMethod method, Uri uri, String? authorization)
     {
         var request = new HttpRequestMessage(method, uri);
 
@@ -382,7 +520,6 @@ internal sealed class PrestoStatementClient
             request.Headers.TryAddWithoutValidation(item.Key, item.Value);
         }
 
-        var authorization = await GetAuthorizationAsync(cancellationToken).ConfigureAwait(false);
         if (!authorization.IsNullOrEmpty()) request.Headers.TryAddWithoutValidation("Authorization", authorization);
 
         request.Headers.TryAddWithoutValidation("User-Agent", _userAgent);
@@ -392,6 +529,32 @@ internal sealed class PrestoStatementClient
             request.Headers.TryAddWithoutValidation(PrestoHeaders.QueryDataEncoding(_options.Protocol), PrestoSpooling.SupportedEncodings);
 
         return request;
+    }
+
+    /// <summary>同步发送请求；现代目标走真同步通道，低版本框架桥接异步</summary>
+    private HttpResponseMessage SendOnce(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+#if NET6_0_OR_GREATER
+        try
+        {
+            return _client.Send(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        }
+        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            // HttpClient 自身超时（未收到响应头）时转成连接超时
+            throw PrestoException.ConnectionTimeout(_options.ConnectionTimeout, ex);
+        }
+#else
+        return SendOnceAsync(request, cancellationToken).GetAwaiter().GetResult();
+#endif
+    }
+
+    private void ResolveSegments(PrestoQueryResults results, CancellationToken cancellationToken)
+    {
+        if (results.Segments.Count == 0) return;
+
+        // Spooling 分段下载保持异步实现，同步路径只在该少见分支阻塞等待
+        ResolveSegmentsAsync(results, cancellationToken).GetAwaiter().GetResult();
     }
 
     private async Task<HttpResponseMessage> SendOnceAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -413,7 +576,8 @@ internal sealed class PrestoStatementClient
         var attempt = 0;
         while (true)
         {
-            using var request = await CreateRequestAsync(HttpMethod.Get, uri, cancellationToken).ConfigureAwait(false);
+            var authorization = await GetAuthorizationAsync(cancellationToken).ConfigureAwait(false);
+            using var request = CreateRequestCore(HttpMethod.Get, uri, authorization);
             using var response = await SendOnceAsync(request, cancellationToken).ConfigureAwait(false);
 
             var status = (Int32)response.StatusCode;

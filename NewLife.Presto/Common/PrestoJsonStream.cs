@@ -343,7 +343,7 @@ internal static partial class PrestoJson
             TotalSplits = totalSplits,
             CompletedSplits = completedSplits,
             RunningSplits = runningSplits,
-            RawJson = Encoding.UTF8.GetString(utf8[start..end]),
+            RawUtf8 = utf8[start..end].ToArray(),
         };
     }
 

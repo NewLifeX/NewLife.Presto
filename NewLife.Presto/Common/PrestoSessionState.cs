@@ -54,7 +54,7 @@ internal sealed class PrestoSessionState
     /// <summary>自定义请求头</summary>
     public IDictionary<String, String> CustomHeaders { get; }
 
-    private IDictionary<String, String>? _headers;
+    private Dictionary<String, String>? _headers;
     private readonly String _headerUser;
     private readonly String _headerCatalog;
     private readonly String _headerSchema;
@@ -94,25 +94,71 @@ internal sealed class PrestoSessionState
         SessionProperties = new Dictionary<String, String>(options.SessionProperties, StringComparer.OrdinalIgnoreCase);
         CustomHeaders = new Dictionary<String, String>(options.CustomHeaders, StringComparer.OrdinalIgnoreCase);
 
-        // 请求头名称与协议绑定，构造时算一次，避免每次请求/响应重复拼接
-        _headerUser = PrestoHeaders.User(Protocol);
-        _headerCatalog = PrestoHeaders.Catalog(Protocol);
-        _headerSchema = PrestoHeaders.Schema(Protocol);
-        _headerSource = PrestoHeaders.Source(Protocol);
-        _headerTimeZone = PrestoHeaders.TimeZone(Protocol);
-        _headerLanguage = PrestoHeaders.Language(Protocol);
-        _headerClientTags = PrestoHeaders.ClientTags(Protocol);
-        _headerClientInfo = PrestoHeaders.ClientInfo(Protocol);
-        _headerResourceGroup = PrestoHeaders.ResourceGroup(Protocol);
-        _headerTraceToken = PrestoHeaders.TraceToken(Protocol);
-        _headerRole = PrestoHeaders.Role(Protocol);
-        _headerSession = PrestoHeaders.Session(Protocol);
-        _headerSetCatalog = PrestoHeaders.SetCatalog(Protocol);
-        _headerSetSchema = PrestoHeaders.SetSchema(Protocol);
-        _headerSetRole = PrestoHeaders.SetRole(Protocol);
-        _headerSetSession = PrestoHeaders.SetSession(Protocol);
-        _headerClearSession = PrestoHeaders.ClearSession(Protocol);
+        // 请求头名称与协议绑定；两种协议各缓存一套，避免每次建连重复拼接
+        var names = Protocol == PrestoProtocol.Trino ? TrinoHeaderNames : PrestoHeaderNames;
+        _headerUser = names.User;
+        _headerCatalog = names.Catalog;
+        _headerSchema = names.Schema;
+        _headerSource = names.Source;
+        _headerTimeZone = names.TimeZone;
+        _headerLanguage = names.Language;
+        _headerClientTags = names.ClientTags;
+        _headerClientInfo = names.ClientInfo;
+        _headerResourceGroup = names.ResourceGroup;
+        _headerTraceToken = names.TraceToken;
+        _headerRole = names.Role;
+        _headerSession = names.Session;
+        _headerSetCatalog = names.SetCatalog;
+        _headerSetSchema = names.SetSchema;
+        _headerSetRole = names.SetRole;
+        _headerSetSession = names.SetSession;
+        _headerClearSession = names.ClearSession;
     }
+
+    private sealed class HeaderNameSet
+    {
+        public String User = "";
+        public String Catalog = "";
+        public String Schema = "";
+        public String Source = "";
+        public String TimeZone = "";
+        public String Language = "";
+        public String ClientTags = "";
+        public String ClientInfo = "";
+        public String ResourceGroup = "";
+        public String TraceToken = "";
+        public String Role = "";
+        public String Session = "";
+        public String SetCatalog = "";
+        public String SetSchema = "";
+        public String SetRole = "";
+        public String SetSession = "";
+        public String ClearSession = "";
+
+        public static HeaderNameSet Create(PrestoProtocol protocol) => new()
+        {
+            User = PrestoHeaders.User(protocol),
+            Catalog = PrestoHeaders.Catalog(protocol),
+            Schema = PrestoHeaders.Schema(protocol),
+            Source = PrestoHeaders.Source(protocol),
+            TimeZone = PrestoHeaders.TimeZone(protocol),
+            Language = PrestoHeaders.Language(protocol),
+            ClientTags = PrestoHeaders.ClientTags(protocol),
+            ClientInfo = PrestoHeaders.ClientInfo(protocol),
+            ResourceGroup = PrestoHeaders.ResourceGroup(protocol),
+            TraceToken = PrestoHeaders.TraceToken(protocol),
+            Role = PrestoHeaders.Role(protocol),
+            Session = PrestoHeaders.Session(protocol),
+            SetCatalog = PrestoHeaders.SetCatalog(protocol),
+            SetSchema = PrestoHeaders.SetSchema(protocol),
+            SetRole = PrestoHeaders.SetRole(protocol),
+            SetSession = PrestoHeaders.SetSession(protocol),
+            ClearSession = PrestoHeaders.ClearSession(protocol),
+        };
+    }
+
+    private static readonly HeaderNameSet TrinoHeaderNames = HeaderNameSet.Create(PrestoProtocol.Trino);
+    private static readonly HeaderNameSet PrestoHeaderNames = HeaderNameSet.Create(PrestoProtocol.Presto);
     #endregion
 
     #region 方法
@@ -128,7 +174,7 @@ internal sealed class PrestoSessionState
 
     /// <summary>生成请求头。结果按会话状态缓存，会话变化后重建</summary>
     /// <returns>请求头集合</returns>
-    public IDictionary<String, String> BuildHeaders()
+    public Dictionary<String, String> BuildHeaders()
     {
         var cached = _headers;
         if (cached != null) return cached;
@@ -200,26 +246,36 @@ internal sealed class PrestoSessionState
             changed = true;
         }
 
-        foreach (var item in GetHeaderValues(response, _headerSetSession))
+        if (response.Headers.TryGetValues(_headerSetSession, out var sessions))
         {
-            foreach (var pair in SplitValues(item))
+            foreach (var item in sessions)
             {
-                var index = pair.IndexOf('=');
-                if (index <= 0) continue;
+                if (item.IsNullOrWhiteSpace()) continue;
 
-                SessionProperties[pair[..index].Trim()] = pair[(index + 1)..].Trim();
-                changed = true;
+                foreach (var pair in SplitValues(item))
+                {
+                    var index = pair.IndexOf('=');
+                    if (index <= 0) continue;
+
+                    SessionProperties[pair[..index].Trim()] = pair[(index + 1)..].Trim();
+                    changed = true;
+                }
             }
         }
 
-        foreach (var item in GetHeaderValues(response, _headerClearSession))
+        if (response.Headers.TryGetValues(_headerClearSession, out var clears))
         {
-            foreach (var name in SplitValues(item))
+            foreach (var item in clears)
             {
-                if (name.IsNullOrWhiteSpace()) continue;
+                if (item.IsNullOrWhiteSpace()) continue;
 
-                SessionProperties.Remove(name.Trim());
-                changed = true;
+                foreach (var name in SplitValues(item))
+                {
+                    if (name.IsNullOrWhiteSpace()) continue;
+
+                    SessionProperties.Remove(name.Trim());
+                    changed = true;
+                }
             }
         }
 
@@ -238,16 +294,6 @@ internal sealed class PrestoSessionState
         }
 
         return null;
-    }
-
-    private static IEnumerable<String> GetHeaderValues(HttpResponseMessage response, String name)
-    {
-        if (!response.Headers.TryGetValues(name, out var values)) yield break;
-
-        foreach (var value in values)
-        {
-            if (!value.IsNullOrWhiteSpace()) yield return value;
-        }
     }
 
     private static IEnumerable<String> SplitValues(String value)

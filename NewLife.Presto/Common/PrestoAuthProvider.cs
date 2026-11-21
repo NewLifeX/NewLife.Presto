@@ -19,7 +19,7 @@ internal static class PrestoAuthProvider
     /// <returns>Authorization 头值；无认证时为空</returns>
     public static Task<String?> GetAuthorizationAsync(PrestoConnectionOptions options, Func<String>? tokenProvider, PrestoOAuthTokenProvider? oauth, CancellationToken cancellationToken)
     {
-        if (options == null) return Task.FromResult<String?>(null);
+        if (options == null) return _noAuth;
 
         switch (options.Auth)
         {
@@ -43,7 +43,32 @@ internal static class PrestoAuthProvider
                     return oauth.GetAuthorizationAsync(cancellationToken);
                 }
             default:
-                return Task.FromResult<String?>(null);
+                return _noAuth;
+        }
+    }
+
+    private static readonly Task<String?> _noAuth = Task.FromResult<String?>(null);
+
+    /// <summary>同步生成认证头；OAuth2 需要异步换取令牌，不在本方法覆盖范围</summary>
+    /// <param name="options">连接配置</param>
+    /// <param name="tokenProvider">令牌刷新回调，可为空</param>
+    /// <returns>Authorization 头值；无认证时为空</returns>
+    public static String? GetAuthorization(PrestoConnectionOptions options, Func<String>? tokenProvider)
+    {
+        if (options == null) return null;
+
+        switch (options.Auth)
+        {
+            case PrestoAuth.Basic:
+                return BuildBasic(options);
+            case PrestoAuth.Jwt:
+                var token = tokenProvider?.Invoke();
+                if (token.IsNullOrEmpty()) token = options.AccessToken;
+                if (token.IsNullOrEmpty()) throw new PrestoException(Localization.Translate("AccessToken is required when Auth=JWT."));
+
+                return "Bearer " + token;
+            default:
+                return null;
         }
     }
 

@@ -106,6 +106,9 @@ internal sealed class PrestoConnectionOptions
     /// <summary>初始重试间隔毫秒数</summary>
     public Int32 RetryInterval { get; init; } = 200;
 
+    /// <summary>重试策略快照，供同连接的语句客户端共享</summary>
+    public PrestoRetryPolicy RetryPolicy { get; init; } = new(3, 200);
+
     /// <summary>Open 时是否请求服务端信息验活</summary>
     public Boolean TestConnection { get; init; }
 
@@ -117,6 +120,9 @@ internal sealed class PrestoConnectionOptions
 
     /// <summary>协调器基地址，始终以斜杠结尾</summary>
     public Uri BaseAddress { get; init; } = new("http://localhost:8080/");
+
+    /// <summary>语句提交地址，按连接缓存</summary>
+    public Uri SubmitUri { get; init; } = new("http://localhost:8080/v1/statement");
     #endregion
 
     #region 方法
@@ -128,6 +134,8 @@ internal sealed class PrestoConnectionOptions
         if (builder == null) throw new ArgumentNullException(nameof(builder));
 
         builder.Validate();
+
+        var baseAddress = BuildBaseAddress(builder.Host, builder.Port, builder.UseSsl, NormalizePath(builder.Path));
 
         return new PrestoConnectionOptions
         {
@@ -163,10 +171,12 @@ internal sealed class PrestoConnectionOptions
             ConnectionTimeout = builder.ConnectionTimeout,
             MaxRetries = builder.MaxRetries,
             RetryInterval = builder.RetryInterval,
+            RetryPolicy = new PrestoRetryPolicy(builder.MaxRetries, builder.RetryInterval),
             TestConnection = builder.TestConnection,
             Compression = builder.Compression,
             Spooling = builder.Spooling,
-            BaseAddress = BuildBaseAddress(builder.Host, builder.Port, builder.UseSsl, NormalizePath(builder.Path)),
+            BaseAddress = baseAddress,
+            SubmitUri = new Uri(baseAddress, "v1/statement"),
         };
     }
 

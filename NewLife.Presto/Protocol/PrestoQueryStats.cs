@@ -7,7 +7,7 @@ namespace NewLife.Presto;
 public sealed class PrestoQueryStats
 {
     private IDictionary<String, Object?>? _raw;
-    private String? _rawJson;
+    private Byte[]? _rawUtf8;
 
     /// <summary>服务端状态字符串</summary>
     public String? State { get; init; }
@@ -37,14 +37,14 @@ public sealed class PrestoQueryStats
     /// <remarks>网络路径按需解析，未访问时不产生字典开销</remarks>
     public IDictionary<String, Object?>? Raw
     {
-        get => _raw ??= PrestoJson.ParseObject(RawJson);
+        get => _raw ??= PrestoJson.ParseObject(RawUtf8 == null ? null : System.Text.Encoding.UTF8.GetString(RawUtf8));
         init => _raw = value;
     }
 
-    /// <summary>原始统计 JSON，供 <see cref="Raw"/> 延迟解析</summary>
-    internal String? RawJson
+    /// <summary>原始统计 JSON 的 UTF-8 字节，供 <see cref="Raw"/> 延迟解析</summary>
+    internal Byte[]? RawUtf8
     {
-        get => _rawJson;
-        init => _rawJson = value;
+        get => _rawUtf8;
+        init => _rawUtf8 = value;
     }
 }

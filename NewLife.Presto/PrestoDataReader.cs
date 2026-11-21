@@ -528,7 +528,23 @@ public sealed class PrestoDataReader : DbDataReader
         }
     }
 
-    private void FetchNextPage() => FetchNextPageAsync(CancellationToken.None).GetAwaiter().GetResult();
+    private void FetchNextPage()
+    {
+        if (_completed) return;
+
+        var nextUri = _page.NextUri!;
+        PrestoQueryResults results;
+        try
+        {
+            results = _client.Fetch(nextUri, _executionToken);
+        }
+        catch (OperationCanceledException ex) when (_timeoutCts?.IsCancellationRequested == true)
+        {
+            throw PrestoException.CommandTimeout(_commandTimeout, ex);
+        }
+
+        AcceptPage(results);
+    }
 
     private async Task FetchNextPageAsync(CancellationToken cancellationToken)
     {
