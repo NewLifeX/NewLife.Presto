@@ -231,6 +231,13 @@ public sealed class PrestoConnectionStringBuilder : DbConnectionStringBuilder
         set => this["TraceToken"] = value;
     }
 
+    /// <summary>角色</summary>
+    public String Role
+    {
+        get => GetString("Role") ?? String.Empty;
+        set => this["Role"] = value;
+    }
+
     /// <summary>网关路径前缀，如 /trino</summary>
     public String Path
     {

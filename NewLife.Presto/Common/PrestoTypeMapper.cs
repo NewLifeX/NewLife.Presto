@@ -19,33 +19,6 @@ public sealed class PrestoDataType
 /// <remarks>只做类型名与参数解析，不依赖运行时反射，NativeAOT 可用。未知类型统一降级为字符串</remarks>
 public static class PrestoTypeMapper
 {
-    private static readonly Dictionary<String, Type> _types = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["boolean"] = typeof(Boolean),
-        ["tinyint"] = typeof(SByte),
-        ["smallint"] = typeof(Int16),
-        ["integer"] = typeof(Int32),
-        ["int"] = typeof(Int32),
-        ["bigint"] = typeof(Int64),
-        ["real"] = typeof(Single),
-        ["double"] = typeof(Double),
-        ["decimal"] = typeof(Decimal),
-        ["varchar"] = typeof(String),
-        ["char"] = typeof(String),
-        ["varbinary"] = typeof(Byte[]),
-        ["json"] = typeof(String),
-        ["date"] = typeof(DateTime),
-        ["time"] = typeof(TimeSpan),
-        ["timestamp"] = typeof(DateTime),
-        ["uuid"] = typeof(Guid),
-        ["ipaddress"] = typeof(IPAddress),
-        ["geometry"] = typeof(Byte[]),
-        ["sphericalgeography"] = typeof(Byte[]),
-        ["hyperloglog"] = typeof(String),
-        ["qdigest"] = typeof(String),
-        ["tdigest"] = typeof(String),
-    };
-
     /// <summary>类型映射清单，供 GetSchema 的 DataTypes 集合使用</summary>
     public static IReadOnlyList<PrestoDataType> DataTypes { get; } =
     [
@@ -90,6 +63,7 @@ public static class PrestoTypeMapper
     /// <summary>获取类型对应的 .NET 类型</summary>
     /// <param name="type">类型签名</param>
     /// <returns>.NET 类型；未知类型返回 <see cref="String"/></returns>
+    [return: System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicFields | System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicProperties)]
     public static Type GetFieldType(String? type)
     {
         if (type.IsNullOrEmpty()) return typeof(String);
@@ -111,7 +85,24 @@ public static class PrestoTypeMapper
         }
 
         var baseType = GetBaseType(text);
-        return _types.TryGetValue(baseType, out var fieldType) ? fieldType : typeof(String);
+        return baseType switch
+        {
+            "boolean" => typeof(Boolean),
+            "tinyint" => typeof(SByte),
+            "smallint" => typeof(Int16),
+            "integer" or "int" => typeof(Int32),
+            "bigint" => typeof(Int64),
+            "real" => typeof(Single),
+            "double" => typeof(Double),
+            "decimal" => typeof(Decimal),
+            "varchar" or "char" or "json" or "hyperloglog" or "qdigest" or "tdigest" => typeof(String),
+            "varbinary" or "geometry" or "sphericalgeography" => typeof(Byte[]),
+            "date" or "timestamp" => typeof(DateTime),
+            "time" => typeof(TimeSpan),
+            "uuid" => typeof(Guid),
+            "ipaddress" => typeof(IPAddress),
+            _ => typeof(String),
+        };
     }
 
     /// <summary>判断是否为复杂类型</summary>
@@ -121,5 +112,42 @@ public static class PrestoTypeMapper
     {
         var baseType = GetBaseType(type);
         return baseType is "array" or "map" or "row";
+    }
+
+    /// <summary>获取类型对应的 <see cref="System.Data.DbType"/></summary>
+    /// <param name="type">类型签名</param>
+    /// <returns>DbType；未知类型返回 <see cref="System.Data.DbType.String"/></returns>
+    public static System.Data.DbType GetDbType(String? type)
+    {
+        if (type.IsNullOrEmpty()) return System.Data.DbType.String;
+
+        var text = type.Trim().ToLowerInvariant();
+        if (text.StartsWith("array") || text.StartsWith("map") || text.StartsWith("row")) return System.Data.DbType.String;
+
+        var hasTimeZone = text.Contains(" with time zone");
+        var baseType = GetBaseType(text);
+        if (hasTimeZone)
+        {
+            if (baseType == "timestamp") return System.Data.DbType.DateTimeOffset;
+            if (baseType == "time") return System.Data.DbType.String;
+        }
+
+        return baseType switch
+        {
+            "boolean" => System.Data.DbType.Boolean,
+            "tinyint" => System.Data.DbType.SByte,
+            "smallint" => System.Data.DbType.Int16,
+            "integer" or "int" => System.Data.DbType.Int32,
+            "bigint" => System.Data.DbType.Int64,
+            "real" => System.Data.DbType.Single,
+            "double" => System.Data.DbType.Double,
+            "decimal" => System.Data.DbType.Decimal,
+            "varbinary" or "geometry" or "sphericalgeography" => System.Data.DbType.Binary,
+            "date" => System.Data.DbType.Date,
+            "time" => System.Data.DbType.Time,
+            "timestamp" => System.Data.DbType.DateTime,
+            "uuid" => System.Data.DbType.Guid,
+            _ => System.Data.DbType.String,
+        };
     }
 }
