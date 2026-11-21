@@ -230,6 +230,31 @@ public class PrestoCommandTests
         Assert.Equal(HttpMethod.Delete, handler.Requests[1].Method);
     }
 
+    [Fact(DisplayName = "默认配置下服务端返回压缩内容仍可解析")]
+    public void HandlesCompressedResponseByDefault()
+    {
+        const String json = """{ "id": "q1", "columns": [{"name":"n","type":"integer"}], "data": [["7"]] }""";
+        var handler = new FakePrestoHandler();
+        handler.Enqueue((request, token) =>
+        {
+            using var output = new System.IO.MemoryStream();
+            using (var gzip = new System.IO.Compression.GZipStream(output, System.IO.Compression.CompressionLevel.Fastest, true))
+            {
+                var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+                gzip.Write(bytes, 0, bytes.Length);
+            }
+
+            var content = new ByteArrayContent(output.ToArray());
+            content.Headers.ContentEncoding.Add("gzip");
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = content });
+        });
+
+        var connection = TestHelper.CreateOpenConnection(handler);
+        using var command = new PrestoCommand("select 7", connection);
+
+        Assert.Equal(7, command.ExecuteScalar());
+    }
+
     [Fact(DisplayName = "终态数据页提前关闭不再发送 DELETE")]
     public void SkipCancelWhenFinished()
     {
