@@ -1,0 +1,5 @@
+# zh-Hans 词表。键为英文源文，与源码字符串逐字一致；缺少的键运行时回退英文。
+"NewLife Presto EF Core Provider": "新生命Presto EFCore提供程序"
+"Entity Framework Core provider for Presto/Trino built on NewLife.Presto. Read-only queries; writes, transactions and migrations are not supported.": "基于 NewLife.Presto 的 Presto/Trino Entity Framework Core 提供程序，仅支持只读查询；不支持写入、事务与迁移。"
+"The provider does not support SaveChanges. Presto/Trino is read-only in this driver.": "该提供程序不支持 SaveChanges。本驱动中的 Presto/Trino 为只读。"
+"The provider does not support database creation, deletion or migrations.": "该提供程序不支持建库、删库或迁移。"

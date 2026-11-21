@@ -1,0 +1,5 @@
+# English source table. Values equal the keys; kept as an explicit locale for tooling symmetry.
+"NewLife Presto EF Core Provider": "NewLife Presto EF Core Provider"
+"Entity Framework Core provider for Presto/Trino built on NewLife.Presto. Read-only queries; writes, transactions and migrations are not supported.": "Entity Framework Core provider for Presto/Trino built on NewLife.Presto. Read-only queries; writes, transactions and migrations are not supported."
+"The provider does not support SaveChanges. Presto/Trino is read-only in this driver.": "The provider does not support SaveChanges. Presto/Trino is read-only in this driver."
+"The provider does not support database creation, deletion or migrations.": "The provider does not support database creation, deletion or migrations."
