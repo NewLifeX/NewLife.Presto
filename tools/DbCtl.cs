@@ -84,7 +84,7 @@ catch (Exception ex)
 static void RequireEngine(String? engine)
 {
     if (engine is not ("trino" or "presto"))
-        throw new ArgumentException("请指定数据库：trino 或 presto。");
+        throw new ArgumentException("Specify a database: trino or presto.");
 }
 
 static String EngineDir(String engine) => engine == "trino" ? "trino-476" : "presto-0.300";
@@ -109,7 +109,7 @@ static (Int32 Code, String Output) RunWsl(String distro, String script, Int32 ti
     psi.ArgumentList.Add("-s");
     psi.Environment["WSL_UTF8"] = "1";
 
-    using var process = Process.Start(psi) ?? throw new InvalidOperationException("无法启动 wsl.exe");
+    using var process = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start wsl.exe");
     // bash 不接受 CRLF，统一转换为 LF 后经 stdin 传入
     process.StandardInput.Write(script.Replace("\r\n", "\n"));
     process.StandardInput.Close();
@@ -175,7 +175,7 @@ static String BestDriveRoot()
     var drive = DriveInfo.GetDrives()
         .Where(e => e.DriveType == DriveType.Fixed && e.IsReady && e.AvailableFreeSpace > 0)
         .OrderByDescending(e => e.AvailableFreeSpace)
-        .FirstOrDefault() ?? throw new InvalidOperationException("未找到可用磁盘");
+        .FirstOrDefault() ?? throw new InvalidOperationException("No available disk found");
 
     return drive.RootDirectory.FullName.TrimEnd('\\');
 }
@@ -195,10 +195,10 @@ static void EnsureDistro(String distro)
         Download(UbuntuBaseUrl, tar);
     }
 
-    Console.WriteLine("导入 WSL 发行版（首次约需 1 分钟）...");
+    Console.WriteLine("Importing WSL distribution (about 1 minute for the first run)...");
     RunHost("wsl.exe", ["--import", distro, root, tar, "--version", "2"], 1800);
     var (code, output) = RunWsl(distro, "apt-get update -qq && apt-get install -y -qq curl ca-certificates >/dev/null && echo ok\n");
-    if (code != 0) throw new InvalidOperationException("发行版初始化失败：" + output);
+    if (code != 0) throw new InvalidOperationException("Distribution initialization failed: " + output);
 }
 
 static void Download(String url, String file)
@@ -349,7 +349,7 @@ if kill -0 "$(cat "$pidf")" 2>/dev/null; then echo "STARTED $(cat "$pidf")"; els
 
     PrintInfo(port);
     Console.WriteLine();
-    Console.WriteLine("连接串示例：");
+    Console.WriteLine("Connection string example:");
     if (isTrino)
         Console.WriteLine($"Host=localhost;Port={port};Catalog=tpch;Schema=tiny;User=test;Protocol=Trino");
     else
@@ -458,7 +458,7 @@ for d in trino-476 presto-0.300 jdk25 jdk17; do
 done
 """;
     var (code, output) = RunWsl(distro, script, 120);
-    if (code != 0) throw new InvalidOperationException("查询状态失败：" + output);
+    if (code != 0) throw new InvalidOperationException("Failed to query status: " + output);
     Console.WriteLine(output.Trim());
 
     var own = output.Split('\n')
@@ -487,7 +487,7 @@ static void Clean(String distro, Boolean purge)
         ? $"rm -rf {Root}/_cache {Root}/logs/* {Root}/trino-476 {Root}/presto-0.300 && echo PURGED\n"
         : $"rm -rf {Root}/_cache {Root}/logs/* && echo CLEANED\n";
     var (code, output) = RunWsl(distro, script, 120);
-    if (code != 0) throw new InvalidOperationException("清理失败：" + output);
+    if (code != 0) throw new InvalidOperationException("Cleanup failed: " + output);
     Console.WriteLine(output.Trim());
 }
 
@@ -526,7 +526,7 @@ static void EnsureKeepAlive(String distro)
     };
     foreach (var item in new[] { "-d", distro, "-u", "root", "--", "bash", "-c", "exec sleep 2147483647" }) psi.ArgumentList.Add(item);
 
-    var process2 = Process.Start(psi) ?? throw new InvalidOperationException("无法启动 WSL 保活会话");
+    var process2 = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start WSL keep-alive session");
     Directory.CreateDirectory(Path.GetDirectoryName(file)!);
     File.WriteAllText(file, process2.Id.ToString(CultureInfo.InvariantCulture));
     Console.WriteLine($"已启动 WSL 保活会话（PID {process2.Id}）");
@@ -556,7 +556,7 @@ echo $count
     }
 
     File.Delete(file);
-    Console.WriteLine("已释放 WSL 保活会话");
+    Console.WriteLine("WSL keep-alive session released");
 }
 
 // ---------------- 参数与帮助 ----------------
