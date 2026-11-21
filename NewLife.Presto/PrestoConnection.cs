@@ -96,6 +96,9 @@ public sealed class PrestoConnection : DbConnection
     /// <summary>连接状态</summary>
     public override ConnectionState State => _state;
 
+    /// <summary>提供程序工厂。EF6 等框架通过该属性获取驱动工厂</summary>
+    protected override DbProviderFactory DbProviderFactory { get; } = PrestoClientFactory.Instance;
+
     /// <summary>单次 HTTP 请求超时秒数</summary>
     public override Int32 ConnectionTimeout => _settings.ConnectionTimeout;
 
