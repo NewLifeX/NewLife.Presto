@@ -19,7 +19,7 @@ public class PrestoStatementClientTests
         var builder = new PrestoConnectionStringBuilder("Host=localhost;Port=8080;Catalog=hive;Schema=default;User=test;Password=secret;ConnectionTimeout=5;MaxRetries=2;RetryInterval=0" + extra);
         var options = PrestoConnectionOptions.From(builder);
         var session = new PrestoSessionState(options);
-        var http = new HttpClient(handler) { BaseAddress = options.BaseAddress, Timeout = Timeout.InfiniteTimeSpan };
+        var http = new HttpClient(handler) { BaseAddress = options.BaseAddress, Timeout = TimeSpan.FromSeconds(options.ConnectionTimeout) };
 
         return (new PrestoStatementClient(http, options, session), handler, session);
     }

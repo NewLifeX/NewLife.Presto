@@ -69,6 +69,43 @@ public class PrestoConnectionTests
         Assert.Throws<InvalidOperationException>(() => connection.ChangeDatabase("cat"));
     }
 
+    [Fact(DisplayName = "关闭连接取消活跃查询")]
+    public void CloseCancelsActiveCommands()
+    {
+        var handler = new FakePrestoHandler();
+        handler.EnqueueJson("""{ "id":"q1","columns":[{"name":"n","type":"integer"}],"data":[],"nextUri":"http://localhost:8080/v1/statement/q1/1" }""");
+        handler.EnqueueJson("""{ "id":"q1" }""");
+        var connection = TestHelper.CreateOpenConnection(handler);
+        using var command = connection.CreateCommand("select 1");
+        using var reader = command.ExecuteReader();
+
+        connection.Close();
+
+        Assert.Equal(ConnectionState.Closed, connection.State);
+    }
+
+    [Fact(DisplayName = "OAuth2 连接打开失败时清理会话与令牌")]
+    public void OAuthFailureDuringOpen()
+    {
+        var handler = new FakePrestoHandler();
+        handler.EnqueueText("bad", System.Net.HttpStatusCode.InternalServerError);
+        var connection = TestHelper.CreateConnection(handler, ";Auth=OAuth2;TokenEndpoint=https://idp.local/token;ClientId=cid;TestConnection=true");
+
+        Assert.Throws<PrestoException>(() => connection.Open());
+        Assert.Equal(ConnectionState.Closed, connection.State);
+    }
+
+    [Fact(DisplayName = "无 Catalog 的连接属性")]
+    public void WithoutCatalog()
+    {
+        using var connection = new PrestoConnection("Host=127.0.0.1;Port=1;User=test");
+        connection.Open();
+
+        Assert.Equal(String.Empty, connection.Catalog);
+        Assert.Equal(String.Empty, connection.Schema);
+        Assert.Equal(String.Empty, connection.Database);
+    }
+
     [Fact(DisplayName = "TestConnection 预取服务端信息")]
     public void TestConnectionOnOpen()
     {

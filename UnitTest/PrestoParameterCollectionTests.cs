@@ -18,6 +18,7 @@ public class PrestoParameterCollectionTests
         Assert.True(collection.Contains(parameter));
         Assert.True(collection.Contains("@A"));
         Assert.False(collection.Contains("@b"));
+        Assert.False(collection.Contains("x"));
         Assert.Equal(0, collection.IndexOf(parameter));
         Assert.Equal(0, collection.IndexOf("@a"));
         Assert.Equal(-1, collection.IndexOf(new PrestoParameter()));
@@ -75,6 +76,10 @@ public class PrestoParameterCollectionTests
         collection.RemoveAt(1);
         Assert.Equal(2, collection.Count);
         collection.Remove(collection[0]);
+        Assert.Single(collection);
+
+        collection.Remove("x");
+        collection.RemoveAt("missing");
         Assert.Single(collection);
 
         collection.RemoveAt("@c");

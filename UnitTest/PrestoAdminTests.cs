@@ -91,6 +91,18 @@ public class PrestoAdminTests
         Assert.Equal(404, ex.HttpStatusCode);
     }
 
+    [Fact(DisplayName = "列表与节点接口透传 HTTP 错误")]
+    public void ListAndNodeErrors()
+    {
+        var handler = new FakePrestoHandler();
+        handler.EnqueueText("boom", HttpStatusCode.InternalServerError);
+        handler.EnqueueText("boom", HttpStatusCode.InternalServerError);
+        var connection = TestHelper.CreateOpenConnection(handler);
+
+        Assert.Equal(500, Assert.Throws<PrestoException>(() => connection.GetQueries()).HttpStatusCode);
+        Assert.Equal(500, Assert.Throws<PrestoException>(() => connection.GetNodes()).HttpStatusCode);
+    }
+
     [Fact(DisplayName = "诊断接口对瞬态错误重试")]
     public void Retries()
     {

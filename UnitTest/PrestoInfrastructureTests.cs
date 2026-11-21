@@ -30,6 +30,13 @@ public class PrestoInfrastructureTests
         Assert.Equal("Bearer fixed", await PrestoAuthProvider.GetAuthorizationAsync(options, () => "", null, CancellationToken.None));
     }
 
+    [Fact(DisplayName = "连接字符串同名别名共存时以规范键为准")]
+    public void AliasConflict()
+    {
+        var builder = new PrestoConnectionStringBuilder("Host=primary;Server=secondary");
+        Assert.Equal("primary", builder.Host);
+    }
+
     [Fact(DisplayName = "连接配置空参数校验")]
     public void OptionsValidation()
     {
@@ -92,10 +99,13 @@ public class PrestoInfrastructureTests
         var second = PrestoHttpClientCache.Get(options);
         Assert.Same(first, second);
         Assert.Equal(options.BaseAddress, first.BaseAddress);
-        Assert.Equal(Timeout.InfiniteTimeSpan, first.Timeout);
+        Assert.Equal(TimeSpan.FromSeconds(100), first.Timeout);
 
         var other = PrestoConnectionOptions.From(new PrestoConnectionStringBuilder("Host=cache1.local;Port=18082;Compression=false"));
         Assert.NotSame(first, PrestoHttpClientCache.Get(other));
+
+        var slower = PrestoConnectionOptions.From(new PrestoConnectionStringBuilder("Host=cache1.local;Port=18081;Compression=false;ConnectionTimeout=30"));
+        Assert.NotSame(first, PrestoHttpClientCache.Get(slower));
 
         var proxied = PrestoConnectionOptions.From(new PrestoConnectionStringBuilder("Host=cache2.local;Port=18083;Proxy=http://proxy:8080;TrustServerCertificate=true;Compression=true"));
         var client = PrestoHttpClientCache.Get(proxied);

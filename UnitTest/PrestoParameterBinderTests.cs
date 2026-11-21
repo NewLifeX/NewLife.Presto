@@ -85,6 +85,16 @@ public class PrestoParameterBinderTests
         Assert.Equal(sql, PrestoParameterBinder.Bind(sql, new PrestoParameterCollection()));
     }
 
+    [Fact(DisplayName = "未闭合的字符串与注释不抛异常")]
+    public void UnterminatedSegments()
+    {
+        var parameters = new PrestoParameterCollection { new PrestoParameter("@x", 1) };
+
+        Assert.Equal("select '@unterminated", PrestoParameterBinder.Bind("select '@unterminated", parameters));
+        Assert.Equal("select 1 -- trailing", PrestoParameterBinder.Bind("select @x -- trailing", parameters));
+        Assert.Equal("select 1 /* trailing", PrestoParameterBinder.Bind("select @x /* trailing", parameters));
+    }
+
     [Theory(DisplayName = "未闭合的字符串与注释不抛异常")]
     [InlineData("select 'abc")]
     [InlineData("select 1 -- comment")]

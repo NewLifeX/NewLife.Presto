@@ -30,6 +30,16 @@ public class ExceptionTests
         Assert.Same(inner, ex.InnerException);
     }
 
+    [Fact(DisplayName = "错误对象只带消息时异常可用")]
+    public void QueryFailedMinimalError()
+    {
+        var ex = PrestoException.QueryFailed(new PrestoQueryError { Message = "m" }, null, null);
+
+        Assert.Contains("m", ex.Message);
+        Assert.Equal(0, ex.PrestoErrorCode);
+        Assert.Throws<ArgumentNullException>(() => PrestoException.QueryFailed((PrestoQueryError)null!, null, null));
+    }
+
     /// <summary>提交失败异常保留 HTTP 状态</summary>
     [Fact(DisplayName = "提交失败异常保留 HTTP 状态")]
     public void SubmitFailedKeepsStatus()

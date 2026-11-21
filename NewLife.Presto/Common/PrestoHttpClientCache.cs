@@ -26,7 +26,7 @@ internal static class PrestoHttpClientCache
     }
 
     private static String BuildKey(PrestoConnectionOptions options)
-        => $"{options.BaseAddress.Scheme}://{options.BaseAddress.Host}:{options.BaseAddress.Port}{options.BaseAddress.AbsolutePath}|{options.Proxy}|{options.TrustServerCertificate}|{options.Compression}";
+        => $"{options.BaseAddress.Scheme}://{options.BaseAddress.Host}:{options.BaseAddress.Port}{options.BaseAddress.AbsolutePath}|{options.Proxy}|{options.TrustServerCertificate}|{options.Compression}|{options.ConnectionTimeout}";
 
     private static HttpClient Create(PrestoConnectionOptions options)
     {
@@ -61,7 +61,7 @@ internal static class PrestoHttpClientCache
         var client = new HttpClient(handler, true)
         {
             BaseAddress = options.BaseAddress,
-            Timeout = Timeout.InfiniteTimeSpan,
+            Timeout = options.ConnectionTimeout > 0 ? TimeSpan.FromSeconds(options.ConnectionTimeout) : Timeout.InfiniteTimeSpan,
         };
 
         return client;

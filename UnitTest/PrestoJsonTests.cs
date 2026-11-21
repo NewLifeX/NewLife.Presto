@@ -7,6 +7,52 @@ namespace UnitTest;
 /// <summary>JSON 投影测试</summary>
 public class PrestoJsonTests
 {
+    [Fact(DisplayName = "数组解析遇到非法 JSON 抛出驱动异常")]
+    public void ParseArrayInvalid()
+    {
+        Assert.Null(PrestoJson.ParseArray(null));
+        Assert.Null(PrestoJson.ParseArray("   "));
+        Assert.Null(PrestoJson.ParseArray("""{ "a": 1 }"""));
+        Assert.Throws<PrestoException>(() => PrestoJson.ParseArray("[{]"));
+        Assert.Throws<PrestoException>(() => PrestoJson.ParseResults("{broken"));
+    }
+
+    [Fact(DisplayName = "查询诊断对象兼容字段差异")]
+    public void QueryInfoVariants()
+    {
+        var plain = PrestoJson.ParseQueryInfo(PrestoJson.ParseObject("""{ "id": "q1", "state": "RUNNING" }"""));
+        Assert.Equal("q1", plain.Id);
+        Assert.Null(plain.User);
+        Assert.Null(plain.Stats);
+        Assert.Null(plain.Error);
+
+        var failed = PrestoJson.ParseQueryInfo(PrestoJson.ParseObject("""{ "queryId": "q2", "stats": { "state": "FAILED" }, "error": { "message": "e" } }"""));
+        Assert.Equal("q2", failed.Id);
+        Assert.Equal("FAILED", failed.Stats!.State);
+        Assert.Equal("e", failed.Error!.Message);
+    }
+
+    [Fact(DisplayName = "数组解析边界")]
+    public void ParseArrayEdges()
+    {
+        Assert.Null(PrestoJson.ParseArray(""));
+        Assert.Null(PrestoJson.ParseArray("{ }"));
+        Assert.Equal(2, PrestoJson.ParseArray("""[{"a":1},{"b":2}]""")!.Count);
+    }
+
+    [Fact(DisplayName = "查询编号在未执行时为空")]
+    public void LastQueryIdBeforeExecution()
+    {
+        var handler = new FakePrestoHandler();
+        handler.EnqueueJson("""{ "id": "q9", "columns": [], "data": [] }""");
+        var connection = TestHelper.CreateOpenConnection(handler);
+        using var command = connection.CreateCommand("select 1");
+
+        Assert.Null(command.LastQueryId);
+        command.ExecuteNonQuery();
+        Assert.Equal("q9", command.LastQueryId);
+    }
+
     [Fact(DisplayName = "解析完整结果页")]
     public void ParseFullResults()
     {

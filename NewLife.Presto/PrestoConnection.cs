@@ -135,7 +135,7 @@ public sealed class PrestoConnection : DbConnection
             _session = new PrestoSessionState(options);
             _oauth = options.Auth == PrestoAuth.OAuth2 ? new PrestoOAuthTokenProvider(options, _handler) : null;
             _client = _handler != null
-                ? new HttpClient(_handler, false) { BaseAddress = options.BaseAddress, Timeout = Timeout.InfiniteTimeSpan }
+                ? new HttpClient(_handler, false) { BaseAddress = options.BaseAddress, Timeout = options.ConnectionTimeout > 0 ? TimeSpan.FromSeconds(options.ConnectionTimeout) : Timeout.InfiniteTimeSpan }
                 : PrestoHttpClientCache.Get(options);
 
             if (options.TrustServerCertificate)

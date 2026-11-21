@@ -17,16 +17,16 @@ internal static class PrestoAuthProvider
     /// <param name="oauth">OAuth2 令牌提供者，可为空</param>
     /// <param name="cancellationToken">取消令牌</param>
     /// <returns>Authorization 头值；无认证时为空</returns>
-    public static async Task<String?> GetAuthorizationAsync(PrestoConnectionOptions options, Func<String>? tokenProvider, PrestoOAuthTokenProvider? oauth, CancellationToken cancellationToken)
+    public static Task<String?> GetAuthorizationAsync(PrestoConnectionOptions options, Func<String>? tokenProvider, PrestoOAuthTokenProvider? oauth, CancellationToken cancellationToken)
     {
-        if (options == null) return null;
+        if (options == null) return Task.FromResult<String?>(null);
 
         switch (options.Auth)
         {
             case PrestoAuth.Basic:
                 {
                     var text = options.User + ":" + options.Password;
-                    return "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes(text));
+                    return Task.FromResult<String?>("Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes(text)));
                 }
             case PrestoAuth.Jwt:
                 {
@@ -34,19 +34,19 @@ internal static class PrestoAuthProvider
                     if (token.IsNullOrEmpty()) token = options.AccessToken;
                     if (token.IsNullOrEmpty()) throw new PrestoException(Localization.Translate("AccessToken is required when Auth=JWT."));
 
-                    return "Bearer " + token;
+                    return Task.FromResult<String?>("Bearer " + token);
                 }
             case PrestoAuth.OAuth2:
                 {
                     var token = tokenProvider?.Invoke();
-                    if (!token.IsNullOrEmpty()) return "Bearer " + token;
+                    if (!token.IsNullOrEmpty()) return Task.FromResult<String?>("Bearer " + token);
 
                     if (oauth == null) throw new PrestoException(Localization.Translate("OAuth2 authentication is not initialized."));
 
-                    return await oauth.GetAuthorizationAsync(cancellationToken).ConfigureAwait(false);
+                    return oauth.GetAuthorizationAsync(cancellationToken);
                 }
             default:
-                return null;
+                return Task.FromResult<String?>(null);
         }
     }
 }

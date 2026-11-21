@@ -21,6 +21,8 @@ public class PrestoDataSourceTests
         Assert.IsType<PrestoConnection>(connection);
         Assert.Equal(ConnStr, connection.ConnectionString, ignoreCase: true);
         Assert.Equal(ConnectionState.Closed, connection.State);
+
+        Assert.Throws<ArgumentNullException>(() => new PrestoDataSource(null!));
     }
 
     [Fact(DisplayName = "数据源打开连接并查询")]

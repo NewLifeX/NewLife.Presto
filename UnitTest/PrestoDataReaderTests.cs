@@ -286,7 +286,7 @@ public class PrestoDataReaderTests
     }
 
     [Fact(DisplayName = "关闭未完成的读取器发送 DELETE")]
-    public void CloseCancelsIncomplete()
+    public async Task CloseCancelsIncomplete()
     {
         var handler = new FakePrestoHandler();
         handler.EnqueueJson("""{ "columns": [{"name":"n","type":"integer"}], "data": [], "nextUri": "http://localhost:8080/v1/statement/q1/1" }""");
@@ -296,6 +296,7 @@ public class PrestoDataReaderTests
         var reader = (PrestoDataReader)command.ExecuteReader();
 
         reader.Close();
+        await reader.CancelTask!;
 
         Assert.True(reader.IsClosed);
         Assert.Throws<InvalidOperationException>(() => reader.Read());
@@ -438,11 +439,12 @@ public class PrestoDataReaderTests
         handler.EnqueueJson("""{ "id": "q1" }""");
         var connection = TestHelper.CreateOpenConnection(handler);
         var command = new PrestoCommand("select 1", connection);
-        using var reader = await command.ExecuteReaderAsync(CommandBehavior.SingleRow, CancellationToken.None);
+        using var reader = (PrestoDataReader)await command.ExecuteReaderAsync(CommandBehavior.SingleRow, CancellationToken.None);
 
         Assert.True(await reader.ReadAsync(CancellationToken.None));
         Assert.Equal(1, reader.GetInt32(0));
         Assert.False(await reader.ReadAsync(CancellationToken.None));
+        await reader.CancelTask!;
         Assert.Contains(handler.Requests, e => e.Method == HttpMethod.Delete);
     }
 

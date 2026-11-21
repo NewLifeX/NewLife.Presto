@@ -44,7 +44,7 @@ internal static class PrestoJson
             // JsonParser.Decode 只接受对象，包一层对象再取数组
             var dic = JsonParser.Decode("{\"items\":" + text + "}");
 
-            return dic != null && dic.TryGetValue("items", out var value) ? value as IList<Object?> : null;
+            return dic?["items"] as IList<Object?>;
         }
         catch (Exception ex)
         {

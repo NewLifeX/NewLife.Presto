@@ -144,6 +144,8 @@ public class PrestoBatchTests
 
         using var other = connection.CreateBatch();
         var command = other.CreateBatchCommand();
+        command.CommandType = CommandType.Text;
+        Assert.Equal(CommandType.Text, command.CommandType);
         Assert.Throws<NotSupportedException>(() => command.CommandType = CommandType.StoredProcedure);
 
         using var transaction = new FakeTransaction();
@@ -168,6 +170,8 @@ public class PrestoBatchTests
         Assert.Equal(3, batch.BatchCommands.Count);
         Assert.Same(b, batch.BatchCommands[1]);
         Assert.Equal(1, batch.BatchCommands.IndexOf(b));
+        System.Collections.Generic.ICollection<DbBatchCommand> commands = batch.BatchCommands;
+        Assert.True(commands.Contains(b));
         Assert.Contains(b, batch.BatchCommands);
         Assert.False(batch.BatchCommands.IsReadOnly);
 
@@ -187,6 +191,73 @@ public class PrestoBatchTests
 
         batch.BatchCommands.Clear();
         Assert.Empty(batch.BatchCommands);
+    }
+
+    [Fact(DisplayName = "批次超时为零与关闭连接时校验")]
+    public void CancellationEdges()
+    {
+        var handler = new FakePrestoHandler();
+        handler.EnqueueJson("""{ "id": "q1", "updateType": "INSERT", "updateCount": 1 }""");
+        var connection = TestHelper.CreateOpenConnection(handler);
+
+        using var batch = connection.CreateBatch();
+        batch.Timeout = 0;
+        batch.BatchCommands.Add(new PrestoBatchCommand { CommandText = "insert into t values (1)" });
+        Assert.Equal(1, batch.ExecuteNonQuery());
+
+        connection.Close();
+        using var closed = connection.CreateBatch();
+        closed.BatchCommands.Add(new PrestoBatchCommand { CommandText = "select 1" });
+        Assert.Throws<InvalidOperationException>(() => closed.ExecuteNonQuery());
+    }
+
+    [Fact(DisplayName = "批次标量空列与空行")]
+    public void ScalarEdges()
+    {
+        var handler = new FakePrestoHandler();
+        handler.EnqueueJson("""{ "id": "q1", "columns": [], "data": [] }""");
+        handler.EnqueueJson("""{ "id": "q2", "columns": [{"name":"n","type":"integer"}], "data": [] }""");
+        var connection = TestHelper.CreateOpenConnection(handler);
+
+        using var batch = connection.CreateBatch();
+        batch.BatchCommands.Add(new PrestoBatchCommand { CommandText = "select 1 where 1=0" });
+
+        Assert.Null(batch.ExecuteScalar());
+        Assert.Null(batch.ExecuteScalar());
+    }
+
+    [Fact(DisplayName = "批次命令文本空值与类型校验")]
+    public void CommandTextEdges()
+    {
+        var command = new PrestoBatchCommand();
+        command.CommandText = null!;
+        Assert.Equal(String.Empty, command.CommandText);
+        Assert.Equal(CommandType.Text, command.CommandType);
+        Assert.True(command.CanCreateParameter);
+    }
+
+    [Fact(DisplayName = "批次连接与事务属性")]
+    public void ConnectionProperties()
+    {
+        using var batch = new PrestoBatch();
+        Assert.Null(batch.Connection);
+        Assert.Null(batch.Transaction);
+        batch.Transaction = null;
+        Assert.Throws<ArgumentException>(() => batch.Connection = new FakeDbConnection());
+    }
+
+    [Fact(DisplayName = "批次读取失败释放执行范围")]
+    public void ReaderFailureDisposesScope()
+    {
+        var handler = new FakePrestoHandler();
+        handler.EnqueueJson("""{ "id": "q1", "error": { "message": "boom", "errorCode": 1 } }""");
+        var connection = TestHelper.CreateOpenConnection(handler);
+
+        using var batch = connection.CreateBatch();
+        batch.BatchCommands.Add(new PrestoBatchCommand { CommandText = "select 1" });
+
+        Assert.Throws<PrestoException>(() => batch.ExecuteReader());
+        Assert.True(connection.CanCreateBatch);
     }
 
     [Fact(DisplayName = "工厂可创建批量命令")]
@@ -214,6 +285,29 @@ public class PrestoBatchTests
         public override void Commit() { }
 
         public override void Rollback() { }
+    }
+
+    private sealed class FakeDbConnection : DbConnection
+    {
+        public override String ConnectionString { get; set; } = String.Empty;
+
+        public override String Database => String.Empty;
+
+        public override String DataSource => String.Empty;
+
+        public override String ServerVersion => String.Empty;
+
+        public override ConnectionState State => ConnectionState.Closed;
+
+        public override void ChangeDatabase(String databaseName) { }
+
+        public override void Close() { }
+
+        public override void Open() { }
+
+        protected override DbTransaction BeginDbTransaction(IsolationLevel isolationLevel) => throw new NotSupportedException();
+
+        protected override DbCommand CreateDbCommand() => throw new NotSupportedException();
     }
 }
 #endif

@@ -122,17 +122,91 @@ public class PrestoOAuthTests
         Assert.Contains("OAuth2", ex.Message);
     }
 
+    [Fact(DisplayName = "OAuth2 令牌请求超时映射为驱动异常")]
+    public void TokenTimeout()
+    {
+        var handler = new FakePrestoHandler();
+        handler.EnqueueDelay(TimeSpan.FromSeconds(5), TokenJson);
+        var connection = TestHelper.CreateOpenConnection(handler, Extra + ";ConnectionTimeout=1");
+
+        using var command = connection.CreateCommand("select 42");
+        var ex = Assert.Throws<PrestoException>(() => command.ExecuteScalar());
+        Assert.Contains("1", ex.Message);
+    }
+
+    [Fact(DisplayName = "关闭连接释放 OAuth2 令牌提供者")]
+    public void DisposeProvider()
+    {
+        var handler = new FakePrestoHandler();
+        var connection = TestHelper.CreateOpenConnection(handler, Extra);
+        connection.Close();
+
+        // 无自定义处理器时使用共享客户端，释放分支同样要覆盖
+        var options = PrestoConnectionOptions.From(new PrestoConnectionStringBuilder("Host=localhost;Auth=OAuth2;TokenEndpoint=https://idp.local/token;ClientId=cid"));
+        using var provider = new PrestoOAuthTokenProvider(options);
+    }
+
+    [Fact(DisplayName = "最小令牌响应与默认有效期")]
+    public void MinimalToken()
+    {
+        var handler = new FakePrestoHandler();
+        handler.EnqueueJson("""{ "access_token": "xyz" }""");
+        handler.EnqueueJson(ScalarJson);
+        var connection = TestHelper.CreateOpenConnection(handler, Extra);
+
+        using var command = connection.CreateCommand("select 42");
+        Assert.Equal(42, command.ExecuteScalar());
+        Assert.Equal("Bearer", handler.Requests[1].Headers.Authorization!.Scheme);
+        Assert.Equal("xyz", handler.Requests[1].Headers.Authorization!.Parameter);
+    }
+
+    [Fact(DisplayName = "expires_in 非正数时使用默认有效期")]
+    public void ZeroLifetime()
+    {
+        var handler = new FakePrestoHandler();
+        handler.EnqueueJson("""{ "access_token": "abc", "token_type": "bearer", "expires_in": 0 }""");
+        handler.EnqueueJson(ScalarJson);
+        var connection = TestHelper.CreateOpenConnection(handler, Extra);
+
+        using var command = connection.CreateCommand("select 42");
+        Assert.Equal(42, command.ExecuteScalar());
+        Assert.Equal("bearer", handler.Requests[1].Headers.Authorization!.Scheme);
+    }
+
+    [Fact(DisplayName = "未初始化 OAuth2 与空 JWT 明确报错")]
+    public void NotInitialized()
+    {
+        var options = PrestoConnectionOptions.From(new PrestoConnectionStringBuilder("Host=localhost;Auth=OAuth2;TokenEndpoint=https://idp.local/token;ClientId=cid"));
+        Assert.Throws<PrestoException>(() => { _ = PrestoAuthProvider.GetAuthorizationAsync(options, null, null, System.Threading.CancellationToken.None); });
+
+        var jwt = new PrestoConnectionOptions { Auth = PrestoAuth.Jwt };
+        Assert.Throws<PrestoException>(() => { _ = PrestoAuthProvider.GetAuthorizationAsync(jwt, null, null, System.Threading.CancellationToken.None); });
+    }
+
     [Fact(DisplayName = "OAuth2 必填参数校验与别名归一化")]
     public void Validation()
     {
         Assert.Throws<ArgumentException>(() => new PrestoConnectionStringBuilder("Auth=OAuth2").Validate());
         Assert.Throws<ArgumentException>(() => new PrestoConnectionStringBuilder("Auth=OAuth2;TokenEndpoint=https://idp.local/token").Validate());
+        Assert.Throws<ArgumentException>(() => new PrestoConnectionStringBuilder("Auth=Kerberos").Validate());
 
-        var builder = new PrestoConnectionStringBuilder("Auth=OAuth;OAuthTokenEndpoint=https://idp.local/token;OAuthClientId=c;OAuthClientSecret=s;OAuthScope=a");
-        Assert.Equal(PrestoAuth.OAuth2, builder.Auth);
+        var builder = new PrestoConnectionStringBuilder();
+        builder.TokenEndpoint = "https://idp.local/token";
+        builder.ClientId = "c";
+        builder.ClientSecret = "s";
+        builder.Scope = "a";
+        builder.ComplexTypes = PrestoComplexType.Structured;
         Assert.Equal("https://idp.local/token", builder.TokenEndpoint);
         Assert.Equal("c", builder.ClientId);
         Assert.Equal("s", builder.ClientSecret);
         Assert.Equal("a", builder.Scope);
+        Assert.Equal(PrestoComplexType.Structured, builder.ComplexTypes);
+
+        var aliased = new PrestoConnectionStringBuilder("Auth=OAuth;OAuthTokenEndpoint=https://idp.local/token;OAuthClientId=c;OAuthClientSecret=s;OAuthScope=a");
+        Assert.Equal(PrestoAuth.OAuth2, aliased.Auth);
+        Assert.Equal("https://idp.local/token", aliased.TokenEndpoint);
+        Assert.Equal("c", aliased.ClientId);
+        Assert.Equal("s", aliased.ClientSecret);
+        Assert.Equal("a", aliased.Scope);
     }
 }

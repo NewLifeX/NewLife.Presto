@@ -43,7 +43,7 @@ internal sealed class PrestoOAuthTokenProvider : IDisposable
     /// <summary>获取 Authorization 头值；令牌过期时自动刷新</summary>
     /// <param name="cancellationToken">取消令牌</param>
     /// <returns>Authorization 头值</returns>
-    public async Task<String> GetAuthorizationAsync(CancellationToken cancellationToken)
+    public async Task<String?> GetAuthorizationAsync(CancellationToken cancellationToken)
     {
         if (IsValid) return BuildHeader();
 

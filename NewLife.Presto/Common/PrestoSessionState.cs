@@ -53,6 +53,8 @@ internal sealed class PrestoSessionState
 
     /// <summary>自定义请求头</summary>
     public IDictionary<String, String> CustomHeaders { get; }
+
+    private IDictionary<String, String>? _headers;
     #endregion
 
     #region 构造
@@ -85,12 +87,16 @@ internal sealed class PrestoSessionState
     {
         Catalog = catalog;
         Schema = schema;
+        _headers = null;
     }
 
-    /// <summary>生成请求头</summary>
+    /// <summary>生成请求头。结果按会话状态缓存，会话变化后重建</summary>
     /// <returns>请求头集合</returns>
     public IDictionary<String, String> BuildHeaders()
     {
+        var cached = _headers;
+        if (cached != null) return cached;
+
         var headers = new Dictionary<String, String>(StringComparer.OrdinalIgnoreCase)
         {
             [PrestoHeaders.User(Protocol)] = User,
@@ -122,6 +128,8 @@ internal sealed class PrestoSessionState
         {
             headers[item.Key] = item.Value;
         }
+
+        _headers = headers;
 
         return headers;
     }
@@ -179,6 +187,8 @@ internal sealed class PrestoSessionState
                 changed = true;
             }
         }
+
+        if (changed) _headers = null;
 
         return changed;
     }

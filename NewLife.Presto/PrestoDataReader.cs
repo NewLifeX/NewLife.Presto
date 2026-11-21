@@ -39,6 +39,8 @@ public sealed class PrestoDataReader : DbDataReader
     private Dictionary<String, Int32>? _ordinalMap;
     private PrestoQueryStats? _stats;
     private Int64 _recordsAffected = -1;
+    private Task? _cancelTask;
+    private static readonly Task _cancelCompleted = Task.FromResult(0);
     #endregion
 
     #region 构造
@@ -118,6 +120,9 @@ public sealed class PrestoDataReader : DbDataReader
 
     /// <summary>最近一页的写操作类型</summary>
     public String? UpdateType => _page.UpdateType;
+
+    /// <summary>最近一次后台取消任务。用于诊断与测试等待取消完成</summary>
+    internal Task? CancelTask => _cancelTask;
 
     /// <summary>按序号获取当前行值</summary>
     /// <param name="ordinal">列序号</param>
@@ -460,6 +465,7 @@ public sealed class PrestoDataReader : DbDataReader
     {
         if (_closed) return;
 
+        // 取消是尽力而为的后台任务，避免调用方为释放服务端资源多等一次往返
         _closed = true;
         if (!_completed) CancelRemaining();
 
@@ -568,15 +574,17 @@ public sealed class PrestoDataReader : DbDataReader
         if (_completed) return;
 
         _completed = true;
-        _client.CancelAsync().GetAwaiter().GetResult();
+        _cancelTask = _client.CancelAsync();
     }
 
-    private async Task CancelRemainingAsync()
+    private Task CancelRemainingAsync()
     {
-        if (_completed) return;
+        if (_completed) return _cancelCompleted;
 
         _completed = true;
-        await _client.CancelAsync().ConfigureAwait(false);
+        _cancelTask = _client.CancelAsync();
+
+        return _cancelCompleted;
     }
     #endregion
 }

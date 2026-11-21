@@ -20,6 +20,9 @@ public static class PrestoParameterBinder
     {
         if (sql == null) throw new ArgumentNullException(nameof(sql));
 
+        // 没有 @ 且无参数时无需扫描 SQL，也无需准备参数表
+        if (sql.IndexOf('@') < 0 && (parameters == null || parameters.Count == 0)) return sql;
+
         var map = BuildMap(parameters);
 
         var builder = new StringBuilder(sql.Length + 32);

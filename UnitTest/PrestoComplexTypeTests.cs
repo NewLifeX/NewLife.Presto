@@ -102,6 +102,78 @@ public class PrestoComplexTypeTests
         Assert.Equal("[broken", reader.GetValue(0));
     }
 
+    [Fact(DisplayName = "非 JSON 文本与未知字段类型回退")]
+    public void ScalarTextFallsBack()
+    {
+        var handler = new FakePrestoHandler();
+        handler.EnqueueJson(Result("array(integer)", JsonString("not-json")));
+        var connection = TestHelper.CreateOpenConnection(handler, ";ComplexTypes=Structured");
+
+        using var command = connection.CreateCommand("select array[1]");
+        using var reader = command.ExecuteReader();
+        Assert.True(reader.Read());
+        Assert.Equal("not-json", reader.GetValue(0));
+
+        var column = new PrestoColumn { Name = "c", Type = "custom", FieldType = typeof(Uri) };
+        Assert.Equal("text", PrestoValueConverter.Convert("text", column));
+    }
+
+    [Fact(DisplayName = "结构化解析的内部边界")]
+    public void ParserEdges()
+    {
+        var array = PrestoTypeSignature.Parse("array(integer)");
+        var map = PrestoTypeSignature.Parse("map(varchar, integer)");
+        var row = PrestoTypeSignature.Parse("row(a integer, b integer)");
+
+        Assert.Null(PrestoComplexValueParser.Parse(null, array));
+        Assert.Equal("5", PrestoComplexValueParser.Parse("5", PrestoTypeSignature.Parse("varchar")));
+        Assert.Equal("x", PrestoComplexValueParser.Parse("x", array));
+        Assert.Equal("[", PrestoComplexValueParser.Parse("[", array));
+        Assert.Equal("{", PrestoComplexValueParser.Parse("{", map));
+        Assert.Equal("{}", PrestoComplexValueParser.Parse("{}", array));
+        Assert.Equal("[]", PrestoComplexValueParser.Parse("[]", map));
+        Assert.Equal("[]", PrestoComplexValueParser.Parse("[]", PrestoTypeSignature.Parse("map(varchar, integer)")));
+
+        // 数组元素类型缺失时保持原值
+        var bare = new PrestoTypeSignature { BaseType = "array" };
+        var values = Assert.IsType<Object[]>(PrestoComplexValueParser.Parse("[1, 2]", bare));
+        Assert.Equal(2, values.Length);
+        Assert.Equal(1L, Convert.ToInt64(values[0], System.Globalization.CultureInfo.InvariantCulture));
+
+        // map 值类型缺失与空值
+        var bareMap = new PrestoTypeSignature { BaseType = "map" };
+        var mapValues = Assert.IsAssignableFrom<IDictionary<String, Object?>>(PrestoComplexValueParser.Parse("{\"a\": 1}", bareMap));
+        Assert.Equal(1L, Convert.ToInt64(mapValues["a"], System.Globalization.CultureInfo.InvariantCulture));
+        var nullMap = Assert.IsAssignableFrom<IDictionary<String, Object?>>(PrestoComplexValueParser.Parse("{\"a\": null}", map));
+        Assert.Null(nullMap["a"]);
+
+        // row 字段少于/多于声明的补齐
+        var shortRow = Assert.IsType<Object[]>(PrestoComplexValueParser.Parse("[1]", row));
+        Assert.Equal(2, shortRow.Length);
+        Assert.Equal(1, shortRow[0]);
+        Assert.Null(shortRow[1]);
+
+        var longRow = Assert.IsType<Object[]>(PrestoComplexValueParser.Parse("[1, 2, 3]", row));
+        Assert.Equal(3, longRow.Length);
+        Assert.Equal(3, longRow[2]);
+    }
+
+    [Fact(DisplayName = "畸形类型签名回退")]
+    public void MalformedSignature()
+    {
+        Assert.Equal(String.Empty, PrestoTypeSignature.Parse("array(integer").BaseType);
+        Assert.Equal(String.Empty, PrestoTypeSignature.Parse("(").BaseType);
+        Assert.Equal("decimal", PrestoTypeSignature.Parse("decimal(10").BaseType);
+
+        var unnamed = PrestoTypeSignature.Parse("row(integer)");
+        Assert.Equal("row", unnamed.BaseType);
+        Assert.Equal(new[] { String.Empty }, unnamed.FieldNames!);
+        Assert.Equal("integer", unnamed.Fields![0].BaseType);
+
+        var quoted = PrestoTypeSignature.Parse("row(\"a\"\"b\" varchar)");
+        Assert.Equal(new[] { "a\"b" }, quoted.FieldNames!);
+    }
+
     [Fact(DisplayName = "类型签名解析")]
     public void SignatureParsing()
     {

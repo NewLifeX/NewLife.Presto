@@ -126,6 +126,8 @@ public static class PrestoUnsupported
 /// <summary>驱动信息</summary>
 public static class PrestoDriver
 {
+    private static readonly Version _version = typeof(PrestoDriver).Assembly.GetName().Version!;
+
     /// <summary>驱动标题，按当前界面语言翻译</summary>
     public static String Title => Localization.Translate("NewLife Presto Driver");
 
@@ -133,5 +135,5 @@ public static class PrestoDriver
     public static String Description => Localization.Translate("Pure C# Presto/Trino ADO.NET driver with zero third-party dependencies, HTTP REST v1 protocol, full async/await and XCode ORM integration. MIT license. Supports net45~net11.");
 
     /// <summary>驱动版本</summary>
-    public static Version Version => typeof(PrestoDriver).Assembly.GetName().Version!;
+    public static Version Version => _version;
 }

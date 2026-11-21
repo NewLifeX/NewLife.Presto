@@ -20,19 +20,16 @@ internal static class PrestoComplexValueParser
         if (value == null) return null;
 
         var text = PrestoJson.ToText(value) ?? String.Empty;
-        if (signature == null) return text;
-        if (!signature.IsComplex) return PrestoValueConverter.ConvertScalar(value, signature.Text);
+        if (!signature.IsComplex) return PrestoValueConverter.ConvertScalar(value!, signature.Text);
 
         var decoded = value is IList<Object?> || value is IDictionary<String, Object?> ? value : Decode(text);
-        if (decoded == null || decoded is String) return decoded as String ?? text;
+        if (decoded is String) return text;
 
-        return signature.BaseType switch
-        {
-            "array" => ParseArray(decoded, signature.Element, text),
-            "map" => ParseMap(decoded, signature.Value, text),
-            "row" => ParseRow(decoded, signature, text),
-            _ => text,
-        };
+        if (signature.BaseType == "array") return ParseArray(decoded, signature.Element, text);
+        if (signature.BaseType == "map") return ParseMap(decoded, signature.Value, text);
+
+        // IsComplex 只可能是 array/map/row，剩下按 row 处理
+        return ParseRow(decoded, signature, text);
     }
 
     private static Object ParseArray(Object decoded, PrestoTypeSignature? element, String fallback)
@@ -65,9 +62,7 @@ internal static class PrestoComplexValueParser
     {
         if (decoded is not IList<Object?> items) return fallback;
 
-        var fields = signature.Fields;
-        if (fields == null) return fallback;
-
+        var fields = signature.Fields!;
         var count = Math.Max(items.Count, fields.Length);
         var result = new Object?[count];
         for (var i = 0; i < count; i++)
@@ -79,24 +74,16 @@ internal static class PrestoComplexValueParser
         return result;
     }
 
-    private static Object? Decode(String text)
+    private static Object Decode(String text)
     {
+        var trimmed = text.TrimStart();
+        if (trimmed.Length == 0 || trimmed[0] is not '[' and not '{') return text;
+
         try
         {
-            var trimmed = text.TrimStart();
-            if (trimmed.Length == 0) return null;
+            var dic = JsonParser.Decode("{\"items\":" + trimmed + "}");
 
-            if (trimmed[0] is '[' or '{')
-            {
-                var dic = JsonParser.Decode("{\"items\":" + trimmed + "}");
-
-                return dic != null && dic.TryGetValue("items", out var value) ? value : null;
-            }
-
-            var wrapper = JsonParser.Decode("{\"items\":[" + trimmed + "]}");
-            if (wrapper != null && wrapper.TryGetValue("items", out var list) && list is IList<Object?> items && items.Count > 0) return items[0];
-
-            return text;
+            return dic != null && dic.TryGetValue("items", out var value) && value != null ? value : text;
         }
         catch
         {

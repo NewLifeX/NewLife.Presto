@@ -19,6 +19,7 @@ public sealed class PrestoBatch : DbBatch
     private PrestoConnection? _connection;
     private Int32 _timeout = -1;
     private CancellationTokenSource? _cancellation;
+    private CancellationTokenSource? _timeoutSource;
     #endregion
 
     #region 属性
@@ -69,23 +70,30 @@ public sealed class PrestoBatch : DbBatch
         var commands = GetCommands();
         if (commands.Count == 0) return 0;
 
-        using var scope = CreateScope(cancellationToken);
-        var total = 0;
-        var known = false;
-        foreach (var item in commands)
+        var cancellation = CreateCancellation(cancellationToken);
+        try
         {
-            using var command = CreateCommand(item);
-            var count = await command.ExecuteNonQueryAsync(scope.Token).ConfigureAwait(false);
-            if (item is PrestoBatchCommand presto) presto.RecordsAffectedInternal = count;
-
-            if (count >= 0)
+            var total = 0;
+            var known = false;
+            foreach (var item in commands)
             {
-                total += count;
-                known = true;
-            }
-        }
+                using var command = CreateCommand(item);
+                var count = await command.ExecuteNonQueryAsync(cancellation.Token).ConfigureAwait(false);
+                if (item is PrestoBatchCommand presto) presto.RecordsAffectedInternal = count;
 
-        return known ? total : -1;
+                if (count >= 0)
+                {
+                    total += count;
+                    known = true;
+                }
+            }
+
+            return known ? total : -1;
+        }
+        finally
+        {
+            ReleaseCancellation();
+        }
     }
 
     /// <summary>执行全部命令并返回最后一条命令的首行首列</summary>
@@ -100,22 +108,29 @@ public sealed class PrestoBatch : DbBatch
         var commands = GetCommands();
         if (commands.Count == 0) return null;
 
-        using var scope = CreateScope(cancellationToken);
-        for (var i = 0; i < commands.Count - 1; i++)
+        var cancellation = CreateCancellation(cancellationToken);
+        try
         {
-            using var command = CreateCommand(commands[i]);
-            var count = await command.ExecuteNonQueryAsync(scope.Token).ConfigureAwait(false);
-            if (commands[i] is PrestoBatchCommand presto) presto.RecordsAffectedInternal = count;
+            for (var i = 0; i < commands.Count - 1; i++)
+            {
+                using var command = CreateCommand(commands[i]);
+                var count = await command.ExecuteNonQueryAsync(cancellation.Token).ConfigureAwait(false);
+                if (commands[i] is PrestoBatchCommand presto) presto.RecordsAffectedInternal = count;
+            }
+
+            var last = commands[^1];
+            using var final = CreateCommand(last);
+            using var reader = await final.ExecuteReaderAsync(cancellation.Token).ConfigureAwait(false);
+
+            if (reader.FieldCount == 0) return null;
+            if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false)) return null;
+
+            return reader.GetValue(0);
         }
-
-        var last = commands[^1];
-        using var final = CreateCommand(last);
-        using var reader = await final.ExecuteReaderAsync(scope.Token).ConfigureAwait(false);
-
-        if (reader.FieldCount == 0) return null;
-        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false)) return null;
-
-        return reader.GetValue(0);
+        finally
+        {
+            ReleaseCancellation();
+        }
     }
 
     /// <summary>执行查询并返回最后一条命令的读取器</summary>
@@ -137,24 +152,24 @@ public sealed class PrestoBatch : DbBatch
         if (commands.Count == 0) throw new InvalidOperationException(Localization.Translate("The batch contains no commands."));
 
         // 读取器在关闭前持续使用取消令牌，执行范围由批次释放
-        var scope = CreateScope(cancellationToken);
+        var cancellation = CreateCancellation(cancellationToken);
         try
         {
             for (var i = 0; i < commands.Count - 1; i++)
             {
                 using var command = CreateCommand(commands[i]);
-                var count = await command.ExecuteNonQueryAsync(scope.Token).ConfigureAwait(false);
+                var count = await command.ExecuteNonQueryAsync(cancellation.Token).ConfigureAwait(false);
                 if (commands[i] is PrestoBatchCommand presto) presto.RecordsAffectedInternal = count;
             }
 
             var last = commands[^1];
             var final = CreateCommand(last);
 
-            return await final.ExecuteReaderAsync(behavior, scope.Token).ConfigureAwait(false);
+            return await final.ExecuteReaderAsync(behavior, cancellation.Token).ConfigureAwait(false);
         }
         catch
         {
-            scope.Dispose();
+            ReleaseCancellation();
             throw;
         }
     }
@@ -188,10 +203,7 @@ public sealed class PrestoBatch : DbBatch
 
     private PrestoCommand CreateCommand(DbBatchCommand batchCommand)
     {
-        var connection = _connection;
-        if (connection == null || connection.State != ConnectionState.Open)
-            throw new InvalidOperationException(Localization.Translate("The connection is not open."));
-
+        var connection = _connection!;
         if (batchCommand.CommandText.IsNullOrWhiteSpace())
             throw new InvalidOperationException(Localization.Translate("CommandText must not be empty."));
 
@@ -206,54 +218,36 @@ public sealed class PrestoBatch : DbBatch
         return command;
     }
 
-    private ExecutionScope CreateScope(CancellationToken cancellationToken)
+    private CancellationTokenSource CreateCancellation(CancellationToken cancellationToken)
     {
         var connection = _connection;
         if (connection == null || connection.State != ConnectionState.Open)
             throw new InvalidOperationException(Localization.Translate("The connection is not open."));
 
+        ReleaseCancellation();
+
         var timeout = Timeout;
-        var timeoutSource = timeout > 0 ? new CancellationTokenSource(TimeSpan.FromSeconds(timeout)) : null;
-        var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource?.Token ?? CancellationToken.None);
+        _timeoutSource = timeout > 0 ? new CancellationTokenSource(TimeSpan.FromSeconds(timeout)) : null;
+        _cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _timeoutSource?.Token ?? CancellationToken.None);
 
+        return _cancellation;
+    }
+
+    private void ReleaseCancellation()
+    {
         _cancellation?.Dispose();
-        _cancellation = cancellation;
-
-        return new ExecutionScope(this, cancellation, timeoutSource);
+        _cancellation = null;
+        _timeoutSource?.Dispose();
+        _timeoutSource = null;
     }
 
     /// <summary>释放批次</summary>
     public override void Dispose()
     {
         Cancel();
-        _cancellation?.Dispose();
-        _cancellation = null;
+        ReleaseCancellation();
 
         base.Dispose();
-    }
-
-    private sealed class ExecutionScope : IDisposable
-    {
-        private readonly PrestoBatch _batch;
-        private readonly CancellationTokenSource _source;
-        private readonly CancellationTokenSource? _timeoutSource;
-
-        public CancellationToken Token => _source.Token;
-
-        public ExecutionScope(PrestoBatch batch, CancellationTokenSource source, CancellationTokenSource? timeoutSource)
-        {
-            _batch = batch;
-            _source = source;
-            _timeoutSource = timeoutSource;
-        }
-
-        public void Dispose()
-        {
-            if (ReferenceEquals(_batch._cancellation, _source)) _batch._cancellation = null;
-
-            _source.Dispose();
-            _timeoutSource?.Dispose();
-        }
     }
     #endregion
 }

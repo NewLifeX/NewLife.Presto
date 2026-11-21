@@ -157,7 +157,7 @@ public class PrestoCommandTests
     }
 
     [Fact(DisplayName = "SingleRow 只返回首行并取消剩余查询")]
-    public void SingleRow()
+    public async Task SingleRow()
     {
         var handler = new FakePrestoHandler();
         handler.EnqueueJson("""{ "id": "q1", "columns": [{"name":"n","type":"integer"}], "data": [["1"],["2"]], "nextUri": "http://localhost:8080/v1/statement/q1/1" }""");
@@ -165,11 +165,13 @@ public class PrestoCommandTests
         var connection = TestHelper.CreateOpenConnection(handler);
         using var command = new PrestoCommand("select 1", connection);
 
-        using var reader = command.ExecuteReader(CommandBehavior.SingleRow);
+        using var reader = (PrestoDataReader)command.ExecuteReader(CommandBehavior.SingleRow);
 
         Assert.True(reader.Read());
         Assert.Equal(1, reader.GetInt32(0));
         Assert.False(reader.Read());
+        await reader.CancelTask!;
+
         Assert.Equal(HttpMethod.Delete, handler.Requests[1].Method);
     }
 
