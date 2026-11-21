@@ -26,6 +26,7 @@ internal sealed class PrestoStatementClient
     private String? _basicAuthorization;
     private Task<String?>? _basicAuthTask;
     private Boolean _syncUnsupported;
+    private Boolean _finished;
     private static readonly String _userAgent = "NewLife.Presto/" + PrestoDriver.Version;
     #endregion
 
@@ -463,6 +464,9 @@ internal sealed class PrestoStatementClient
         var next = _nextUri;
         if (next.IsNullOrEmpty()) return;
 
+        // 服务端已进入终态（数据页常见 FINISHED + nextUri）时无需再发 DELETE，省掉一次往返与分配
+        if (_finished) return;
+
         _nextUri = null;
         using var span = PrestoDiagnostics.StartCancel(_options);
         try
@@ -629,7 +633,16 @@ internal sealed class PrestoStatementClient
         if (!results.InfoUri.IsNullOrEmpty()) _infoUri = results.InfoUri;
         _nextUri = results.NextUri;
         _completed = results.NextUri.IsNullOrEmpty();
+
+        var state = results.Stats?.State;
+        if (state != null && IsTerminalState(state)) _finished = true;
     }
+
+    private static Boolean IsTerminalState(String state)
+        => state.Equals("FINISHED", StringComparison.OrdinalIgnoreCase)
+        || state.Equals("FAILED", StringComparison.OrdinalIgnoreCase)
+        || state.Equals("CANCELED", StringComparison.OrdinalIgnoreCase)
+        || state.Equals("CANCELLED", StringComparison.OrdinalIgnoreCase);
 
     private PrestoException CreateHttpException(Uri uri, HttpResponseMessage response, String body)
     {

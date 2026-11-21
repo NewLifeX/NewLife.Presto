@@ -113,7 +113,7 @@ internal sealed class PrestoConnectionOptions
     public Boolean TestConnection { get; init; }
 
     /// <summary>是否请求并接受压缩响应</summary>
-    public Boolean Compression { get; init; } = true;
+    public Boolean Compression { get; init; }
 
     /// <summary>是否启用 Trino Spooling 协议，从对象存储分段下载大结果集</summary>
     public Boolean Spooling { get; init; }

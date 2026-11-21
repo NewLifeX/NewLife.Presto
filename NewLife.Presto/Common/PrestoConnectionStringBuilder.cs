@@ -407,10 +407,14 @@ public sealed class PrestoConnectionStringBuilder : DbConnectionStringBuilder
         set => this["TestConnection"] = value;
     }
 
-    /// <summary>是否请求并接受压缩响应。默认开启</summary>
+    /// <summary>是否请求并接受压缩响应。默认关闭</summary>
+    /// <remarks>
+    /// 压缩省带宽但要多花解压时间：回环/同区网络下，15000 行扫描约多 4–6 ms；
+    /// 跨广域网、带宽受限时收益明显，可显式设置 <c>Compression=true</c>。
+    /// </remarks>
     public Boolean Compression
     {
-        get => GetString("Compression").IsNullOrEmpty() || GetBoolean("Compression");
+        get => !GetString("Compression").IsNullOrEmpty() && GetBoolean("Compression");
         set => this["Compression"] = value;
     }
 
