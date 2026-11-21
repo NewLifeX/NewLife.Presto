@@ -405,11 +405,8 @@ internal sealed class PrestoStatementClient
     private PrestoException CreateQueryException(PrestoQueryResults results)
     {
         var error = results.Error!;
-        var ex = PrestoException.QueryFailed(error, results.Id ?? _queryId, null);
-        ex.Data["failureInfo"] = error.FailureInfo;
-        ex.Data["errorLocation"] = error.ErrorLocation;
 
-        return ex;
+        return PrestoException.QueryFailed(error, results.Id ?? _queryId, null);
     }
     #endregion
 }
