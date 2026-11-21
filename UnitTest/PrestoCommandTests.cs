@@ -134,7 +134,6 @@ public class PrestoCommandTests
         var connection = TestHelper.CreateOpenConnection(handler);
         using var command = new PrestoCommand("select 1", connection);
 
-        Assert.Throws<NotSupportedException>(() => command.ExecuteReader(CommandBehavior.SequentialAccess));
         Assert.Throws<NotSupportedException>(() => command.ExecuteReader(CommandBehavior.KeyInfo));
     }
 

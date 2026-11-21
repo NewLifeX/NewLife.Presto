@@ -23,7 +23,8 @@ public class PrestoClientFactoryTests
     {
         var factory = PrestoClientFactory.Instance;
 
-        Assert.False(factory.CanCreateDataAdapter);
+        Assert.True(factory.CanCreateDataAdapter);
+        Assert.IsType<PrestoDataAdapter>(factory.CreateDataAdapter());
         Assert.False(factory.CanCreateCommandBuilder);
         Assert.False(factory.CanCreateDataSourceEnumerator);
     }
