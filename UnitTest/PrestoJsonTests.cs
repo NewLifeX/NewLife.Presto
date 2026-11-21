@@ -97,7 +97,8 @@ public class PrestoJsonTests
         Assert.Equal(1, results.Stats.TotalSplits);
         Assert.Equal(1, results.Stats.CompletedSplits);
         Assert.Equal(0, results.Stats.RunningSplits);
-        Assert.NotNull(results.Stats.Raw);
+        Assert.Null(results.Stats.Raw);  // 中间页只保留进度字段
+
         Assert.Single(results.Warnings);
         Assert.Equal("w", results.Warnings[0].Message);
         Assert.Equal(7, results.Warnings[0].WarningCode);
@@ -550,6 +551,43 @@ public class PrestoJsonTests
         Assert.Empty(results.Data[0]);
         Assert.Equal(0, results.Stats!.TotalSplits);
         Assert.Equal(-1, results.Stats.CompletedSplits);
+    }
+
+    [Fact(DisplayName = "相同查询编号与信息地址跨页复用字符串")]
+    public void ReuseSharedPageStrings()
+    {
+        const String json = """{ "id": "q1", "infoUri": "http://localhost/ui", "columns": [], "data": [] }""";
+        var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+
+        var first = PrestoJson.ParseResultsUtf8(bytes);
+        var second = PrestoJson.ParseResultsUtf8(bytes, false, first.Id, first.InfoUri);
+
+        Assert.Same(first.Id, second.Id);
+        Assert.Same(first.InfoUri, second.InfoUri);
+
+        var third = PrestoJson.ParseResultsUtf8(bytes, false, "other", "other-uri");
+        Assert.Equal("q1", third.Id);
+        Assert.NotSame("other", third.Id);
+    }
+
+    [Fact(DisplayName = "终页保留统计原始 JSON")]
+    public void TerminalPageKeepsRawStats()
+    {
+        const String json = """
+        {
+          "id": "q1",
+          "columns": [ { "name": "a", "type": "bigint" } ],
+          "data": [ [1] ],
+          "stats": { "state": "FINISHED", "processedRows": 1, "custom": 5 }
+        }
+        """;
+
+        var results = PrestoJson.ParseResults(json);
+
+        Assert.True(results.IsComplete);
+        Assert.Equal("FINISHED", results.Stats!.State);
+        Assert.NotNull(results.Stats.Raw);
+        Assert.Equal(5, Convert.ToInt32(results.Stats.Raw!["custom"]));
     }
 
     [Fact(DisplayName = "文本数值与日期按字节直转，异常格式回退字符串")]

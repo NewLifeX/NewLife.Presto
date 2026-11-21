@@ -98,6 +98,53 @@ public class PrestoResponseBodyTests
         empty.Dispose();
     }
 
+    [Fact(DisplayName = "gzip 与 deflate 响应由驱动自行解压")]
+    public async Task CompressedContent()
+    {
+        const String json = """{"columns":[{"name":"a","type":"bigint"}],"data":[[1]]}""";
+        var bytes = Encoding.UTF8.GetBytes(json);
+
+        foreach (var encoding in new[] { "gzip", "deflate" })
+        {
+            var content = new ByteArrayContent(Compress(bytes, encoding));
+            content.Headers.ContentEncoding.Add(encoding);
+
+            using var body = await PrestoResponseBody.ReadAsync(new HttpResponseMessage(HttpStatusCode.OK) { Content = content }, CancellationToken.None);
+            Assert.Equal(json, body.GetText());
+            Assert.Single(body.ParseResults(false).Data);
+
+            var syncContent = new ByteArrayContent(Compress(bytes, encoding));
+            syncContent.Headers.ContentEncoding.Add(encoding);
+            using var syncBody = PrestoResponseBody.Read(new HttpResponseMessage(HttpStatusCode.OK) { Content = syncContent }, CancellationToken.None);
+            Assert.Equal(json, syncBody.GetText());
+        }
+    }
+
+    [Fact(DisplayName = "未知内容编码按原始字节读取")]
+    public async Task UnknownContentEncoding()
+    {
+        const String json = """{"columns":[{"name":"a","type":"bigint"}],"data":[[1]]}""";
+        var content = new ByteArrayContent(Encoding.UTF8.GetBytes(json));
+        content.Headers.ContentEncoding.Add("br");
+
+        using var body = await PrestoResponseBody.ReadAsync(new HttpResponseMessage(HttpStatusCode.OK) { Content = content }, CancellationToken.None);
+
+        Assert.Equal(json, body.GetText());
+    }
+
+    private static Byte[] Compress(Byte[] data, String encoding)
+    {
+        using var output = new MemoryStream();
+        using (var stream = encoding == "gzip"
+            ? (Stream)new System.IO.Compression.GZipStream(output, System.IO.Compression.CompressionLevel.Fastest, true)
+            : new System.IO.Compression.DeflateStream(output, System.IO.Compression.CompressionLevel.Fastest, true))
+        {
+            stream.Write(data, 0, data.Length);
+        }
+
+        return output.ToArray();
+    }
+
     private sealed class NonSeekableContent(Byte[] data) : HttpContent
     {
         protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) => stream.WriteAsync(data, 0, data.Length);
