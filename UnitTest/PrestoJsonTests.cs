@@ -552,6 +552,101 @@ public class PrestoJsonTests
         Assert.Equal(-1, results.Stats.CompletedSplits);
     }
 
+    [Fact(DisplayName = "文本数值与日期按字节直转，异常格式回退字符串")]
+    public void StreamingTextNumbersAndDates()
+    {
+        const String json = """
+        {
+          "columns": [
+            { "name": "d1", "type": "decimal(12,2)" },
+            { "name": "d2", "type": "decimal(12,2)" },
+            { "name": "d3", "type": "decimal(12,2)" },
+            { "name": "t1", "type": "date" },
+            { "name": "t2", "type": "date" },
+            { "name": "t3", "type": "date" }
+          ],
+          "data": [ [ "12.50", "abc", "1e999", "2020-01-02", "2020-02-31", "2020-1-2" ] ]
+        }
+        """;
+
+        var results = PrestoJson.ParseResults(json);
+        var row = results.Data[0];
+
+        Assert.IsType<Decimal>(row[0]);
+        Assert.Equal(12.5m, row[0]);
+        Assert.IsType<String>(row[1]);
+        Assert.IsType<String>(row[2]);
+        Assert.IsType<DateTime>(row[3]);
+        Assert.Equal(new DateTime(2020, 1, 2), row[3]);
+        Assert.IsType<String>(row[4]);
+        Assert.IsType<String>(row[5]);
+
+        // 年月日越界都退回字符串，交给取值阶段按原有语义报错
+        var invalid = PrestoJson.ParseResults("""
+        {
+          "columns": [ { "name": "t", "type": "date" } ],
+          "data": [ [ "0000-01-01" ], [ "2020-00-01" ], [ "2020-13-01" ], [ "2020-01-00" ], [ "2020-01-32" ] ]
+        }
+        """);
+        for (var i = 0; i < invalid.Data.Count; i++) Assert.IsType<String>(invalid.Data[i][0]);
+    }
+
+    [Fact(DisplayName = "非数组行触发扁平行数组扩容后按实际单元格回退")]
+    public void StreamingNonArrayRowsGrowBuffer()
+    {
+        const String json = """
+        {
+          "columns": [ { "name": "a", "type": "integer" }, { "name": "b", "type": "integer" } ],
+          "data": [ null, null, [ 1, 2 ] ]
+        }
+        """;
+
+        var results = PrestoJson.ParseResults(json);
+
+        Assert.Equal(3, results.Data.Count);
+        Assert.Empty(results.Data[0]);
+        Assert.Empty(results.Data[1]);
+        Assert.Equal(2, results.Data[2].Count);
+        Assert.Equal(1, results.Data[2][0]);
+    }
+
+    [Fact(DisplayName = "整页单元格超过阈值时退回行列表并保留实际单元格")]
+    public void StreamingWidePageFallsBackToRows()
+    {
+        var cells = new List<String>();
+        for (var i = 0; i < 11000; i++)
+        {
+            cells.Add($"[{i}, {i}, {i}]");
+        }
+
+        // 首行多一格、次行少两格，覆盖回退路径的裁剪与忽略逻辑
+        cells[0] = "[0, 0, 0, 9]";
+        cells[1] = "[1]";
+
+        var json = $$"""
+        {
+          "columns": [ { "name": "a", "type": "integer" }, { "name": "b", "type": "integer" }, { "name": "c", "type": "integer" } ],
+          "data": [ {{String.Join(",", cells)}} ]
+        }
+        """;
+
+        var results = PrestoJson.ParseResults(json);
+
+        Assert.Equal(11000, results.Data.Count);
+        Assert.Equal(3, results.Data[0].Count);
+        Assert.Single(results.Data[1]);
+        Assert.Equal(3, results.Data[10999].Count);
+        Assert.Equal(10999, results.Data[10999][2]);
+    }
+
+    [Fact(DisplayName = "扁平行缓冲区缺行或列数异常时返回空集")]
+    public void MaterializeGuards()
+    {
+        Assert.Empty(new PrestoQueryResults().Data);
+        Assert.Empty(new PrestoQueryResults { CellBuffer = [1], CellArity = 0, RowCount = 1 }.Data);
+        Assert.Empty(new PrestoQueryResults { CellBuffer = [1], CellArity = 1, RowCount = 0 }.Data);
+    }
+
     [Fact(DisplayName = "数据为对象时按 Spooling 描述解析")]
     public void StreamingSpooledDataObject()
     {

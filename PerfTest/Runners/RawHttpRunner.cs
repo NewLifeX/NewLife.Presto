@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -14,6 +15,7 @@ public sealed class RawHttpRunner : IRunner
     private readonly String _schema;
     private readonly String _headerPrefix;
     private readonly HttpClient _http = new() { Timeout = TimeSpan.FromMinutes(2) };
+    private readonly List<String> _columnTypes = [];
 
     /// <summary>以端点信息构造</summary>
     /// <param name="host">主机</param>
@@ -73,12 +75,39 @@ public sealed class RawHttpRunner : IRunner
         return rows.Count;
     }
 
+    /// <summary>读取全部结果行并累计多列校验值，返回行数</summary>
+    /// <param name="sql">查询语句</param>
+    public Int64 ReadColumns(String sql)
+    {
+        var rows = Execute(sql, true);
+        var types = _columnTypes;
+        var sum = 0L;
+        foreach (var row in rows)
+        {
+            for (var i = 0; i < row.Count && i < types.Count; i++)
+            {
+                var cell = row[i];
+                if (cell.ValueKind == JsonValueKind.Null) continue;
+
+                var type = types[i];
+                if (type.StartsWith("bigint") || type.StartsWith("integer")) sum += cell.GetInt64();
+                else if (type.StartsWith("varchar")) sum += (cell.GetString() ?? String.Empty).Length;
+                else if (type.StartsWith("decimal")) sum += (Int64)(Decimal.Parse(cell.GetString() ?? "0", CultureInfo.InvariantCulture) * 100);
+                else if (type.StartsWith("date")) sum += DateTime.ParseExact(cell.GetString() ?? String.Empty, "yyyy-MM-dd", CultureInfo.InvariantCulture).DayOfYear;
+            }
+        }
+
+        Checksum = sum;
+        return rows.Count;
+    }
+
     /// <summary>提交查询并跟随 nextUri 拉取全部结果</summary>
     /// <param name="sql">查询语句</param>
     /// <param name="keepRows">是否保留全部数据行，false 时取到首个数据页即返回</param>
     private List<List<JsonElement>> Execute(String sql, Boolean keepRows)
     {
         var rows = new List<List<JsonElement>>();
+        _columnTypes.Clear();
         var uri = $"http://{_host}:{_port}/v1/statement";
         var first = true;
         while (!String.IsNullOrEmpty(uri))
@@ -99,6 +128,12 @@ public sealed class RawHttpRunner : IRunner
 
             if (root.TryGetProperty("error", out var error))
                 throw new InvalidOperationException(error.TryGetProperty("message", out var message) ? message.GetString() : "查询失败");
+
+            if (_columnTypes.Count == 0 && root.TryGetProperty("columns", out var columns) && columns.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var column in columns.EnumerateArray())
+                    _columnTypes.Add(column.TryGetProperty("type", out var type) ? type.GetString() ?? String.Empty : String.Empty);
+            }
 
             if (root.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Array)
             {

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 
 namespace PerfTest;
 
@@ -89,10 +90,15 @@ public sealed class BenchmarkRunner(BenchmarkOptions options, Action<String> log
                 var note = rows == ActualRows && checksum == expected ? "数据一致" : $"行数 {rows}，校验和 {checksum}（期望 {expected}）";
                 log($"  预热完成：扫描 {rows} 行，{note}");
 
+                var columnRows = probe.ReadColumns(ColumnsSql);
+                var columnNote = columnRows == ColumnRows && probe.Checksum == ColumnsChecksum ? "数据一致" : $"行数 {columnRows}，校验和 {probe.Checksum}（期望 {ColumnsChecksum}）";
+                log($"  多列预热完成：{columnRows} 行，{columnNote}");
+
                 results.Add(MeasureConnect(descriptor));
                 results.Add(Measure(descriptor, "标量查询 SELECT 1", options.ScalarIterations, probe, r => r.ExecuteScalar(ScalarSql)));
                 results.Add(Measure(descriptor, $"聚合 {options.Rows} 行", options.AggregateIterations, probe, r => r.ExecuteScalar(AggregateSql)));
                 results.Add(Measure(descriptor, $"扫描 {options.Rows} 行", options.ScanIterations, probe, r => r.ReadAll(ScanSql)));
+                results.Add(Measure(descriptor, $"多列类型 {ColumnRows} 行", options.ScanIterations, probe, r => r.ReadColumns(ColumnsSql)));
                 results.Add(await MeasureConcurrencyAsync(descriptor));
 
                 statuses.Add(new ClientStatus(descriptor.Name, descriptor.Category, true, checksum, note));
@@ -126,6 +132,28 @@ public sealed class BenchmarkRunner(BenchmarkOptions options, Action<String> log
 
     private String AggregateSql => $"SELECT count(*) FROM ({ScanSql}) AS s";
 
+    private const Int32 ColumnRows = 5000;
+
+    private String ColumnsSql =>
+        $"SELECT x, CAST(x AS varchar) || 'abcdefghij', CAST(x AS decimal(12,2)) / 4, date_add('day', x % 300, DATE '2020-01-01') FROM UNNEST(sequence(1, {ColumnRows})) AS t(x)";
+
+    private Int64 ColumnsChecksum
+    {
+        get
+        {
+            var sum = 0L;
+            for (var i = 1; i <= ColumnRows; i++)
+            {
+                sum += i;
+                sum += i.ToString(CultureInfo.InvariantCulture).Length + 10;
+                sum += i * 25;
+                sum += 1 + i % 300;
+            }
+
+            return sum;
+        }
+    }
+
     private Int64 ExpectedChecksum
     {
         get
@@ -139,9 +167,30 @@ public sealed class BenchmarkRunner(BenchmarkOptions options, Action<String> log
     private ScenarioResult MeasureConnect(RunnerDescriptor descriptor)
     {
         var samples = new List<Double>(options.ConnectIterations);
+        String? error = null;
+
+        for (var i = 0; i < options.Warmup; i++)
+        {
+            var warmup = descriptor.Create();
+            try
+            {
+                warmup.Open();
+                warmup.ExecuteScalar(ScalarSql);
+            }
+            catch
+            {
+                // 预热失败交给正式采样报告
+            }
+            finally
+            {
+                warmup.Dispose();
+            }
+        }
+
+        Settle();
+
         var allocated = GC.GetTotalAllocatedBytes(true);
         var watch = new Stopwatch();
-        String? error = null;
 
         for (var i = 0; i < options.ConnectIterations; i++)
         {
@@ -173,9 +222,24 @@ public sealed class BenchmarkRunner(BenchmarkOptions options, Action<String> log
     private ScenarioResult Measure(RunnerDescriptor descriptor, String scenario, Int32 iterations, IRunner runner, Action<IRunner> action)
     {
         var samples = new List<Double>(iterations);
+        String? error = null;
+
+        for (var i = 0; i < options.Warmup; i++)
+        {
+            try
+            {
+                action(runner);
+            }
+            catch
+            {
+                // 预热失败交给正式采样报告
+            }
+        }
+
+        Settle();
+
         var allocated = GC.GetTotalAllocatedBytes(true);
         var watch = new Stopwatch();
-        String? error = null;
 
         for (var i = 0; i < iterations; i++)
         {
@@ -202,6 +266,29 @@ public sealed class BenchmarkRunner(BenchmarkOptions options, Action<String> log
     private async Task<ScenarioResult> MeasureConcurrencyAsync(RunnerDescriptor descriptor)
     {
         var scenario = $"{options.Concurrency} 并发 x {options.ConcurrencyIterations} 次";
+
+        var warmups = new Task[options.Concurrency];
+        for (var i = 0; i < warmups.Length; i++)
+        {
+            warmups[i] = Task.Run(() =>
+            {
+                using var runner = descriptor.Create();
+                try
+                {
+                    runner.Open();
+                    runner.ExecuteScalar(AggregateSql);
+                }
+                catch
+                {
+                    // 预热失败交给正式采样报告
+                }
+            });
+        }
+
+        await Task.WhenAll(warmups).ConfigureAwait(false);
+
+        Settle();
+
         var watch = Stopwatch.StartNew();
         var errors = new List<String>();
         var allocated = GC.GetTotalAllocatedBytes(true);
@@ -233,6 +320,14 @@ public sealed class BenchmarkRunner(BenchmarkOptions options, Action<String> log
         var samples = new List<Double> { watch.Elapsed.TotalMilliseconds / total };
         var result = Statistics.Summarize(descriptor.Name, descriptor.Category, scenario, samples, allocated, throughput);
         return errors.Count == 0 ? result : result with { Error = errors[0] };
+    }
+
+    /// <summary>采集前先做一次完整回收，避免上一个客户端的垃圾在本次测量期间触发回收</summary>
+    private static void Settle()
+    {
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
     }
 
     private static String Simplify(Exception ex)

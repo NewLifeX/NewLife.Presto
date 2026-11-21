@@ -1,4 +1,5 @@
 using System.Data.Common;
+using System.Globalization;
 
 namespace PerfTest.Runners;
 
@@ -70,6 +71,70 @@ public abstract class DbRunnerBase : IRunner
         Checksum = sum;
         return count;
     }
+
+    /// <summary>读取全部结果行并累计多列校验值，返回行数</summary>
+    /// <param name="sql">查询语句</param>
+    public Int64 ReadColumns(String sql)
+    {
+        var conn = _connection ?? throw new InvalidOperationException("Connection is not open");
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = sql;
+        using var reader = cmd.ExecuteReader();
+
+        var count = 0;
+        var sum = 0L;
+        while (reader.Read())
+        {
+            sum += ToInt64(reader.GetValue(0));
+            sum += ToText(reader.GetValue(1))?.Length ?? 0;
+            sum += ToCents(reader.GetValue(2));
+            sum += ToDayOfYear(reader.GetValue(3));
+            count++;
+        }
+
+        Checksum = sum;
+        return count;
+    }
+
+    private static Int64 ToInt64(Object? value) => value switch
+    {
+        null or DBNull => 0,
+        Int64 v => v,
+        Int32 v => v,
+        _ => Convert.ToInt64(value),
+    };
+
+    private static String? ToText(Object? value) => value switch
+    {
+        null or DBNull => null,
+        String v => v,
+        _ => Convert.ToString(value, CultureInfo.InvariantCulture),
+    };
+
+    private static Int64 ToCents(Object? value)
+    {
+        var number = value switch
+        {
+            null or DBNull => 0m,
+            Decimal v => v,
+            String v => Decimal.Parse(v, CultureInfo.InvariantCulture),
+            Double v => (Decimal)v,
+            Single v => (Decimal)v,
+            IConvertible value2 => value2.ToDecimal(CultureInfo.InvariantCulture),
+            _ => Decimal.Parse(value.ToString() ?? "0", CultureInfo.InvariantCulture),
+        };
+        return (Int64)(number * 100);
+    }
+
+    private static Int32 ToDayOfYear(Object? value) => value switch
+    {
+        null or DBNull => 0,
+        DateTime v => v.DayOfYear,
+        DateTimeOffset v => v.DayOfYear,
+        String v => DateTime.Parse(v, CultureInfo.InvariantCulture).DayOfYear,
+        IConvertible value2 => value2.ToDateTime(CultureInfo.InvariantCulture).DayOfYear,
+        _ => DateTime.Parse(value.ToString() ?? String.Empty, CultureInfo.InvariantCulture).DayOfYear,
+    };
 
     /// <summary>释放资源</summary>
     public void Dispose() => Close();

@@ -28,4 +28,8 @@ public interface IRunner : IDisposable
     /// <summary>读取全部结果行，返回行数</summary>
     /// <param name="sql">查询语句</param>
     Int32 ReadAll(String sql);
+
+    /// <summary>读取全部结果行并累计多列校验值，返回行数</summary>
+    /// <param name="sql">查询语句</param>
+    Int64 ReadColumns(String sql);
 }

@@ -14,7 +14,7 @@ public static class ReportBuilder
         sb.AppendLine("# Presto/Trino .NET 客户端性能对比");
         sb.AppendLine();
         sb.AppendLine($"> 生成时间：{DateTime.Now:yyyy-MM-dd HH:mm:ss}　引擎：{options.Engine}　端点：{options.Host}:{options.Port}");
-        sb.AppendLine($"> 运行参数：扫描 {options.Rows} 行，标量 {options.ScalarIterations} 次，聚合 {options.AggregateIterations} 次，扫描 {options.ScanIterations} 次，连接 {options.ConnectIterations} 次，并发 {options.Concurrency} x {options.ConcurrencyIterations}，重复 {options.Repeat} 轮");
+        sb.AppendLine($"> 运行参数：扫描 {options.Rows} 行，多列 5000 行，标量 {options.ScalarIterations} 次，聚合 {options.AggregateIterations} 次，扫描 {options.ScanIterations} 次，连接 {options.ConnectIterations} 次，并发 {options.Concurrency} x {options.ConcurrencyIterations}，预热 {options.Warmup}，重复 {options.Repeat} 轮");
         sb.AppendLine();
 
         sb.AppendLine("## 1. 客户端与可用性");
@@ -67,6 +67,7 @@ public static class ReportBuilder
         sb.AppendLine("## 3. 说明");
         sb.AppendLine();
         sb.AppendLine("- 所有客户端在同一进程、同一端点、相同 SQL 下串行测量，互不重叠，避免相互干扰。");
+        sb.AppendLine("- 每个场景正式采样前先按预热次数执行，再做一次强制 GC，避免 JIT 分层编译与上一个客户端的垃圾影响本次测量。");
         sb.AppendLine("- “建立连接并首次查询”包含协议握手与会话初始化，兼顾延迟握手（懒连接）的客户端。");
         sb.AppendLine("- “每次分配”取自 GC.GetTotalAllocatedBytes，仅统计托管堆分配，不含本机内存与网络缓冲区。");
         sb.AppendLine("- 并发场景每条任务使用独立连接，吞吐 = 总查询数 / 墙钟时间。");
