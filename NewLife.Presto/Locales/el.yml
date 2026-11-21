@@ -56,3 +56,6 @@
 "The OAuth2 token endpoint returned no access token.": "Το τελικό σημείο διακριτικού OAuth2 δεν επέστρεψε διακριτικό πρόσβασης."
 "Query id cannot be empty.": "Το αναγνωριστικό ερωτήματος δεν μπορεί να είναι κενό."
 "Unsupported complex type mode: {0}. Use String or Structured.": "Μη υποστηριζόμενη λειτουργία σύνθετου τύπου: {0}. Χρησιμοποιήστε String ή Structured."
+"Spooling is only supported with the Trino protocol.": "Το Spooling υποστηρίζεται μόνο με το πρωτόκολλο Trino."
+"Unsupported query data encoding '{0}'. Only uncompressed JSON is supported.": "Μη υποστηριζόμενη κωδικοποίηση δεδομένων ερωτήματος '{0}'. Υποστηρίζεται μόνο μη συμπιεσμένο JSON."
+"Unsupported spooled segment type: {0}.": "Μη υποστηριζόμενος τύπος τμήματος: {0}."

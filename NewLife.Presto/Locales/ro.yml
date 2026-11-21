@@ -56,3 +56,6 @@
 "The OAuth2 token endpoint returned no access token.": "Punctul final de token OAuth2 nu a returnat niciun token de acces."
 "Query id cannot be empty.": "ID-ul interogării nu poate fi gol."
 "Unsupported complex type mode: {0}. Use String or Structured.": "Mod de tip complex neacceptat: {0}. Utilizați String sau Structured."
+"Spooling is only supported with the Trino protocol.": "Spooling este acceptat doar cu protocolul Trino."
+"Unsupported query data encoding '{0}'. Only uncompressed JSON is supported.": "Codificarea datelor interogării „{0}” nu este acceptată. Este acceptat doar JSON necomprimat."
+"Unsupported spooled segment type: {0}.": "Tip de segment neacceptat: {0}."

@@ -56,3 +56,6 @@
 "The OAuth2 token endpoint returned no access token.": "OAuth2 令牌端点未返回访问令牌。"
 "Query id cannot be empty.": "查询编号不能为空。"
 "Unsupported complex type mode: {0}. Use String or Structured.": "不支持的复杂类型模式 {0}；请使用 String 或 Structured。"
+"Spooling is only supported with the Trino protocol.": "仅 Trino 协议支持 Spooling。"
+"Unsupported query data encoding '{0}'. Only uncompressed JSON is supported.": "不支持查询数据编码 {0}；仅支持未压缩的 JSON。"
+"Unsupported spooled segment type: {0}.": "不支持的分段类型：{0}。"

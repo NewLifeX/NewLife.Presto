@@ -56,3 +56,6 @@
 "The OAuth2 token endpoint returned no access token.": "O endpoint de token OAuth2 não retornou nenhum token de acesso."
 "Query id cannot be empty.": "O ID da consulta não pode estar vazio."
 "Unsupported complex type mode: {0}. Use String or Structured.": "Modo de tipo complexo não suportado: {0}. Use String ou Structured."
+"Spooling is only supported with the Trino protocol.": "O Spooling só é suportado com o protocolo Trino."
+"Unsupported query data encoding '{0}'. Only uncompressed JSON is supported.": "Codificação de dados da consulta '{0}' não suportada. Apenas JSON não compactado é suportado."
+"Unsupported spooled segment type: {0}.": "Tipo de segmento não suportado: {0}."

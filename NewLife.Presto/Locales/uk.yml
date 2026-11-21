@@ -56,3 +56,6 @@
 "The OAuth2 token endpoint returned no access token.": "Кінцева точка токена OAuth2 не повернула маркер доступу."
 "Query id cannot be empty.": "Ідентифікатор запиту не може бути порожнім."
 "Unsupported complex type mode: {0}. Use String or Structured.": "Непідтримуваний режим складного типу: {0}. Використовуйте String або Structured."
+"Spooling is only supported with the Trino protocol.": "Spooling підтримується лише з протоколом Trino."
+"Unsupported query data encoding '{0}'. Only uncompressed JSON is supported.": "Кодування даних запиту «{0}» не підтримується. Підтримується лише нестиснений JSON."
+"Unsupported spooled segment type: {0}.": "Непідтримуваний тип сегмента: {0}."

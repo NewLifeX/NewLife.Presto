@@ -56,3 +56,6 @@
 "The OAuth2 token endpoint returned no access token.": "Điểm cuối token OAuth2 không trả về token truy cập."
 "Query id cannot be empty.": "ID truy vấn không được để trống."
 "Unsupported complex type mode: {0}. Use String or Structured.": "Chế độ kiểu phức hợp không được hỗ trợ: {0}. Hãy dùng String hoặc Structured."
+"Spooling is only supported with the Trino protocol.": "Spooling chỉ được hỗ trợ với giao thức Trino."
+"Unsupported query data encoding '{0}'. Only uncompressed JSON is supported.": "Không hỗ trợ mã hóa dữ liệu truy vấn '{0}'. Chỉ hỗ trợ JSON không nén."
+"Unsupported spooled segment type: {0}.": "Loại phân đoạn không được hỗ trợ: {0}."

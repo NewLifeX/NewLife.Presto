@@ -77,6 +77,7 @@ internal sealed class PrestoStatementClient
             if (!response.IsSuccessStatusCode) throw CreateHttpException(uri, response, body);
 
             var results = PrestoJson.ParseResults(body, _options.ComplexTypes == PrestoComplexType.Structured);
+            await ResolveSegmentsAsync(results, cancellationToken).ConfigureAwait(false);
             Apply(results);
 
             if (results.Error != null) throw CreateQueryException(results);
@@ -124,6 +125,7 @@ internal sealed class PrestoStatementClient
                 if (!response.IsSuccessStatusCode) throw CreateHttpException(uri, response, body);
 
                 var results = PrestoJson.ParseResults(body, _options.ComplexTypes == PrestoComplexType.Structured);
+                await ResolveSegmentsAsync(results, cancellationToken).ConfigureAwait(false);
                 Apply(results);
 
                 if (results.Error != null) throw CreateQueryException(results);
@@ -250,6 +252,82 @@ internal sealed class PrestoStatementClient
     }
     #endregion
 
+    #region Spooling
+    /// <summary>把 Spooling 分段解析为行，按分段顺序追加到当前页</summary>
+    private async Task ResolveSegmentsAsync(PrestoQueryResults results, CancellationToken cancellationToken)
+    {
+        var segments = results.Segments;
+        if (segments.Count == 0) return;
+
+        if (!PrestoSpooling.IsSupported(results.DataEncoding))
+            throw new PrestoException(Localization.Translate("Unsupported query data encoding '{0}'. Only uncompressed JSON is supported.", results.DataEncoding ?? String.Empty));
+
+        foreach (var segment in segments)
+        {
+            if (segment.Type.EqualIgnoreCase(PrestoSpooling.InlineType))
+            {
+                foreach (var row in PrestoSpooling.DecodeInline(segment)) results.Data.Add(row);
+            }
+            else if (segment.Type.EqualIgnoreCase(PrestoSpooling.SpooledType))
+            {
+                if (segment.Uri.IsNullOrEmpty()) throw PrestoSpooling.InvalidSegment(segment.Type);
+
+                var rows = await DownloadSegmentAsync(segment, cancellationToken).ConfigureAwait(false);
+                foreach (var row in rows) results.Data.Add(row);
+
+                await AcknowledgeSegmentAsync(segment).ConfigureAwait(false);
+            }
+            else
+                throw PrestoSpooling.InvalidSegment(segment.Type);
+        }
+    }
+
+    /// <summary>从对象存储下载分段；只携带分段自带的请求头，不带会话头与认证头</summary>
+    private async Task<IList<IList<Object?>>> DownloadSegmentAsync(PrestoQuerySegment segment, CancellationToken cancellationToken)
+    {
+        var uri = ResolveUri(segment.Uri!);
+        using var request = CreateSegmentRequest(HttpMethod.Get, uri, segment);
+        using var response = await SendOnceAsync(request, cancellationToken).ConfigureAwait(false);
+
+        var body = await ReadBodyAsync(response, cancellationToken).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode) throw CreateHttpException(uri, response, body);
+
+        return PrestoJson.ParseRows(body);
+    }
+
+    /// <summary>确认分段已读取，失败只记录调试日志；服务端 TTL 会兜底清理</summary>
+    private async Task AcknowledgeSegmentAsync(PrestoQuerySegment segment)
+    {
+        if (segment.AckUri.IsNullOrEmpty()) return;
+
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            using var request = CreateSegmentRequest(HttpMethod.Get, ResolveUri(segment.AckUri!), segment);
+            using var response = await _client.SendAsync(request, cts.Token).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log?.Debug("Failed to acknowledge the spooled segment: {0}", ex.Message);
+        }
+    }
+
+    private static HttpRequestMessage CreateSegmentRequest(HttpMethod method, Uri uri, PrestoQuerySegment segment)
+    {
+        var request = new HttpRequestMessage(method, uri);
+        foreach (var item in segment.Headers)
+        {
+            foreach (var value in item.Value)
+            {
+                request.Headers.TryAddWithoutValidation(item.Key, value);
+            }
+        }
+        if (!segment.Headers.ContainsKey("Accept-Encoding")) request.Headers.TryAddWithoutValidation("Accept-Encoding", "identity");
+
+        return request;
+    }
+    #endregion
+
     #region 取消
     /// <summary>尽力取消服务端查询</summary>
     /// <returns>异步任务</returns>
@@ -298,6 +376,8 @@ internal sealed class PrestoStatementClient
         request.Headers.TryAddWithoutValidation("User-Agent", "NewLife.Presto/" + PrestoDriver.Version);
         request.Headers.TryAddWithoutValidation("Accept", "application/json");
         if (_options.Compression) request.Headers.TryAddWithoutValidation("Accept-Encoding", "gzip, deflate");
+        if (_options.Spooling && method == HttpMethod.Post)
+            request.Headers.TryAddWithoutValidation(PrestoHeaders.QueryDataEncoding(_options.Protocol), PrestoSpooling.SupportedEncodings);
 
         return request;
     }

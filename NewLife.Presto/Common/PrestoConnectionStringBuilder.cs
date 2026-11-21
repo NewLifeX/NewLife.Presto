@@ -25,6 +25,7 @@ public sealed class PrestoConnectionStringBuilder : DbConnectionStringBuilder
     private static readonly String[] _clientSecretKeys = ["ClientSecret", "OAuthClientSecret", "AppSecret"];
     private static readonly String[] _scopeKeys = ["Scope", "OAuthScope"];
     private static readonly String[] _complexTypesKeys = ["ComplexTypes", "ComplexType", "StructuredTypes"];
+    private static readonly String[] _spoolingKeys = ["Spooling", "SpoolingProtocol", "SpoolingEnabled"];
     #endregion
 
     #region 构造
@@ -394,6 +395,13 @@ public sealed class PrestoConnectionStringBuilder : DbConnectionStringBuilder
         set => this["Compression"] = value;
     }
 
+    /// <summary>是否启用 Trino Spooling 协议。默认关闭，仅支持未压缩 JSON 编码</summary>
+    public Boolean Spooling
+    {
+        get => GetBoolean("Spooling");
+        set => this["Spooling"] = value;
+    }
+
     /// <summary>会话属性。格式 key=value，多项以 | 分隔</summary>
     public IDictionary<String, String> SessionProperties => ParsePairs("SessionProperties", '=', "Invalid session property format: {0}. Expected key=value.");
 
@@ -429,6 +437,10 @@ public sealed class PrestoConnectionStringBuilder : DbConnectionStringBuilder
         _ = SessionProperties;
         _ = CustomHeaders;
         _ = ComplexTypes;
+        _ = Spooling;
+
+        if (Spooling && Protocol == PrestoProtocol.Presto)
+            throw new ArgumentException(Localization.Translate("Spooling is only supported with the Trino protocol."), nameof(Spooling));
 
         if (Auth == PrestoAuth.Jwt && AccessToken.IsNullOrEmpty())
             throw new ArgumentException(Localization.Translate("AccessToken is required when Auth=JWT."), nameof(AccessToken));
@@ -462,6 +474,7 @@ public sealed class PrestoConnectionStringBuilder : DbConnectionStringBuilder
             Move(_clientSecretKeys, "ClientSecret");
             Move(_scopeKeys, "Scope");
             Move(_complexTypesKeys, "ComplexTypes");
+            Move(_spoolingKeys, "Spooling");
             Move(["ApplicationName"], "Source");
             Move(["BasePath"], "Path");
             Move(["HttpProxy"], "Proxy");

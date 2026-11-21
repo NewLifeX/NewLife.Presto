@@ -60,13 +60,17 @@ internal static class PrestoJson
     {
         var dic = ParseObject(json) ?? throw new PrestoException(Localization.Translate("The server returned an empty response."));
 
+        var data = dic.TryGetValue("data", out var dataValue) ? dataValue : null;
+        var spooled = AsDictionary(data);
         return new PrestoQueryResults
         {
             Id = GetString(dic, "id"),
             InfoUri = GetString(dic, "infoUri"),
             NextUri = GetString(dic, "nextUri"),
             Columns = ParseColumns(dic.TryGetValue("columns", out var columns) ? columns : null, structured),
-            Data = ParseData(dic.TryGetValue("data", out var data) ? data : null),
+            Data = spooled == null ? ParseData(data) : [],
+            DataEncoding = spooled == null ? null : GetString(spooled, "encoding"),
+            Segments = spooled == null ? [] : ParseSegments(spooled.TryGetValue("segments", out var segments) ? segments : null),
             Stats = ParseStats(dic.TryGetValue("stats", out var stats) ? stats : null),
             Warnings = ParseWarnings(dic.TryGetValue("warnings", out var warnings) ? warnings : null),
             Error = ParseError(dic.TryGetValue("error", out var error) ? error : null),
@@ -242,6 +246,61 @@ internal static class PrestoJson
         }
 
         return list;
+    }
+
+    private static List<PrestoQuerySegment> ParseSegments(Object? value)
+    {
+        var list = new List<PrestoQuerySegment>();
+        if (AsList(value) is not { } items) return list;
+
+        foreach (var item in items)
+        {
+            if (AsDictionary(item) is not { } dic) continue;
+
+            list.Add(new PrestoQuerySegment
+            {
+                Type = GetString(dic, "type"),
+                Data = GetString(dic, "data"),
+                Uri = GetString(dic, "uri"),
+                AckUri = GetString(dic, "ackUri"),
+                Headers = ParseHeaders(dic.TryGetValue("headers", out var headers) ? headers : null),
+            });
+        }
+
+        return list;
+    }
+
+    private static Dictionary<String, IList<String>> ParseHeaders(Object? value)
+    {
+        var headers = new Dictionary<String, IList<String>>(StringComparer.OrdinalIgnoreCase);
+        if (AsDictionary(value) is not { } dic) return headers;
+
+        foreach (var item in dic)
+        {
+            if (AsList(item.Value) is not { } values) continue;
+
+            var list = new List<String>();
+            foreach (var text in values)
+            {
+                if (ToText(text) is { } line) list.Add(line);
+            }
+            headers[item.Key] = list;
+        }
+
+        return headers;
+    }
+
+    /// <summary>解析分段中的行数组</summary>
+    /// <param name="json">JSON 数组文本</param>
+    /// <returns>行列表</returns>
+    public static IList<IList<Object?>> ParseRows(String? json)
+    {
+        if (json.IsNullOrWhiteSpace()) return [];
+
+        if (ParseArray(json) is not { } rows)
+            throw new PrestoException(Localization.Translate("Failed to parse the server response: {0}", "expected a JSON array of rows"));
+
+        return ParseData(rows);
     }
 
     private static String? FormatLocation(Object? value)

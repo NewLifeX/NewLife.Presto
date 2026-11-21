@@ -56,3 +56,6 @@
 "The OAuth2 token endpoint returned no access token.": "Koncový bod tokenu OAuth2 nevrátil žádný přístupový token."
 "Query id cannot be empty.": "ID dotazu nesmí být prázdné."
 "Unsupported complex type mode: {0}. Use String or Structured.": "Nepodporovaný režim složeného typu: {0}. Použijte String nebo Structured."
+"Spooling is only supported with the Trino protocol.": "Spooling je podporován pouze s protokolem Trino."
+"Unsupported query data encoding '{0}'. Only uncompressed JSON is supported.": "Nepodporované kódování dat dotazu '{0}'. Podporováno je pouze nekomprimované JSON."
+"Unsupported spooled segment type: {0}.": "Nepodporovaný typ segmentu: {0}."

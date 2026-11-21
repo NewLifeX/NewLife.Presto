@@ -56,3 +56,6 @@
 "The OAuth2 token endpoint returned no access token.": "OAuth2 belirteç uç noktası erişim belirteci döndürmedi."
 "Query id cannot be empty.": "Sorgu kimliği boş olamaz."
 "Unsupported complex type mode: {0}. Use String or Structured.": "Karmaşık tür modu desteklenmiyor: {0}. String veya Structured kullanın."
+"Spooling is only supported with the Trino protocol.": "Spooling yalnızca Trino protokolüyle desteklenir."
+"Unsupported query data encoding '{0}'. Only uncompressed JSON is supported.": "Sorgu verisi kodlaması '{0}' desteklenmiyor. Yalnızca sıkıştırılmamış JSON desteklenir."
+"Unsupported spooled segment type: {0}.": "Desteklenmeyen segment türü: {0}."

@@ -56,3 +56,6 @@
 "The OAuth2 token endpoint returned no access token.": "OAuth2 トークンエンドポイントがアクセストークンを返しませんでした。"
 "Query id cannot be empty.": "クエリ ID を空にすることはできません。"
 "Unsupported complex type mode: {0}. Use String or Structured.": "複合型モードはサポートされていません: {0}。String または Structured を使用してください。"
+"Spooling is only supported with the Trino protocol.": "Spooling は Trino プロトコルでのみサポートされます。"
+"Unsupported query data encoding '{0}'. Only uncompressed JSON is supported.": "クエリデータのエンコーディング '{0}' はサポートされていません。非圧縮 JSON のみサポートされます。"
+"Unsupported spooled segment type: {0}.": "サポートされていないセグメント種別: {0}。"

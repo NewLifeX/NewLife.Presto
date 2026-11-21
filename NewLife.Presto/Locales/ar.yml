@@ -56,3 +56,6 @@
 "The OAuth2 token endpoint returned no access token.": "لم تُرجع نقطة نهاية رمز OAuth2 أي رمز وصول."
 "Query id cannot be empty.": "لا يمكن أن يكون معرّف الاستعلام فارغًا."
 "Unsupported complex type mode: {0}. Use String or Structured.": "وضع النوع المركّب غير مدعوم: {0}. استخدم String أو Structured."
+"Spooling is only supported with the Trino protocol.": "لا يتم دعم Spooling إلا مع بروتوكول Trino."
+"Unsupported query data encoding '{0}'. Only uncompressed JSON is supported.": "ترميز بيانات الاستعلام غير مدعوم: {0}. يتم دعم JSON غير المضغوط فقط."
+"Unsupported spooled segment type: {0}.": "نوع المقطع المجمّع غير مدعوم: {0}."

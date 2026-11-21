@@ -56,3 +56,6 @@
 "The OAuth2 token endpoint returned no access token.": "Endpoint token OAuth2 tidak mengembalikan token akses."
 "Query id cannot be empty.": "ID kueri tidak boleh kosong."
 "Unsupported complex type mode: {0}. Use String or Structured.": "Mode tipe kompleks tidak didukung: {0}. Gunakan String atau Structured."
+"Spooling is only supported with the Trino protocol.": "Spooling hanya didukung dengan protokol Trino."
+"Unsupported query data encoding '{0}'. Only uncompressed JSON is supported.": "Pengodean data kueri '{0}' tidak didukung. Hanya JSON yang tidak dikompresi yang didukung."
+"Unsupported spooled segment type: {0}.": "Jenis segmen tidak didukung: {0}."

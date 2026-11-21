@@ -74,6 +74,11 @@ public static class PrestoHeaders
     /// <returns>请求头名称</returns>
     public static String Transaction(PrestoProtocol protocol) => GetPrefix(protocol) + "Transaction";
 
+    /// <summary>查询数据编码，用于 Spooling 协议协商</summary>
+    /// <param name="protocol">协议类型</param>
+    /// <returns>请求头名称</returns>
+    public static String QueryDataEncoding(PrestoProtocol protocol) => GetPrefix(protocol) + "Query-Data-Encoding";
+
     /// <summary>服务端设置 Catalog</summary>
     /// <param name="protocol">协议类型</param>
     /// <returns>响应头名称</returns>

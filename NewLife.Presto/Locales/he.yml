@@ -56,3 +56,6 @@
 "The OAuth2 token endpoint returned no access token.": "נקודת הקצה של אסימון OAuth2 לא החזירה אסימון גישה."
 "Query id cannot be empty.": "מזהה השאילתה אינו יכול להיות ריק."
 "Unsupported complex type mode: {0}. Use String or Structured.": "מצב טיפוס מורכב אינו נתמך: {0}. השתמש ב-String או Structured."
+"Spooling is only supported with the Trino protocol.": "Spooling נתמך רק עם פרוטוקול Trino."
+"Unsupported query data encoding '{0}'. Only uncompressed JSON is supported.": "קידוד נתוני שאילתה '{0}' אינו נתמך. נתמך רק JSON לא דחוס."
+"Unsupported spooled segment type: {0}.": "סוג מקטע לא נתמך: {0}."

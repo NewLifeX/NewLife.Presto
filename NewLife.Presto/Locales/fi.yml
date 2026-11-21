@@ -56,3 +56,6 @@
 "The OAuth2 token endpoint returned no access token.": "OAuth2-token-päätepiste ei palauttanut käyttöoikeustunnusta."
 "Query id cannot be empty.": "Kyselyn tunnus ei voi olla tyhjä."
 "Unsupported complex type mode: {0}. Use String or Structured.": "Monimutkaisen tyypin tila ei ole tuettu: {0}. Käytä arvoa String tai Structured."
+"Spooling is only supported with the Trino protocol.": "Spooling on tuettu vain Trino-protokollalla."
+"Unsupported query data encoding '{0}'. Only uncompressed JSON is supported.": "Kyselydatan koodaus '{0}' ei ole tuettu. Vain pakkaamaton JSON on tuettu."
+"Unsupported spooled segment type: {0}.": "Tukematon segmenttityyppi: {0}."

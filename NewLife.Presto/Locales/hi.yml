@@ -56,3 +56,6 @@
 "The OAuth2 token endpoint returned no access token.": "OAuth2 टोकन एंडपॉइंट ने कोई एक्सेस टोकन नहीं लौटाया।"
 "Query id cannot be empty.": "क्वेरी आईडी खाली नहीं हो सकती।"
 "Unsupported complex type mode: {0}. Use String or Structured.": "जटिल प्रकार मोड असमर्थित है: {0}। String या Structured का उपयोग करें।"
+"Spooling is only supported with the Trino protocol.": "Spooling केवल Trino प्रोटोकॉल के साथ समर्थित है।"
+"Unsupported query data encoding '{0}'. Only uncompressed JSON is supported.": "असमर्थित क्वेरी डेटा एन्कोडिंग '{0}'। केवल असंपीड़ित JSON समर्थित है।"
+"Unsupported spooled segment type: {0}.": "असमर्थित स्पूल्ड सेगमेंट प्रकार: {0}."

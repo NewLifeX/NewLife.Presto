@@ -33,6 +33,7 @@ public class IntegrationTests
         Metadata(connection);
         Diagnostics(connection);
         ComplexTypes(connection);
+        SpoolingFallback(connection);
         ErrorMapping(connection);
     }
 
@@ -141,6 +142,20 @@ public class IntegrationTests
             Assert.Equal("alice", row[0]);
             Assert.Equal(30, row[1]);
         }
+    }
+
+    private static void SpoolingFallback(PrestoConnection connection)
+    {
+        // 本地 Trino 未配置对象存储时，服务端不返回 Spooling 编码，驱动应自动回退直接协议
+        if (new PrestoConnectionStringBuilder(connection.ConnectionString).Protocol != PrestoProtocol.Trino) return;
+
+        using var spooling = new PrestoConnection(connection.ConnectionString + ";Spooling=true");
+        spooling.Open();
+
+        using var command = spooling.CreateCommand();
+        command.CommandText = "select count(*) from tpch.tiny.orders";
+
+        Assert.Equal(15000L, command.ExecuteScalar());
     }
 
     private static void ErrorMapping(PrestoConnection connection)

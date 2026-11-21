@@ -56,3 +56,6 @@
 "The OAuth2 token endpoint returned no access token.": "OAuth2 крајња тачка токена није вратила приступни токен."
 "Query id cannot be empty.": "ID упита не може бити празан."
 "Unsupported complex type mode: {0}. Use String or Structured.": "Неподржани режим сложеног типа: {0}. Користите String или Structured."
+"Spooling is only supported with the Trino protocol.": "Spooling је подржан само са Trino протоколом."
+"Unsupported query data encoding '{0}'. Only uncompressed JSON is supported.": "Кодирање података упита '{0}' није подржано. Подржан је само некомпримовани JSON."
+"Unsupported spooled segment type: {0}.": "Неподржани тип сегмента: {0}."

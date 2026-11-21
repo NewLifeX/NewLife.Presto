@@ -112,6 +112,9 @@ internal sealed class PrestoConnectionOptions
     /// <summary>是否请求并接受压缩响应</summary>
     public Boolean Compression { get; init; } = true;
 
+    /// <summary>是否启用 Trino Spooling 协议，从对象存储分段下载大结果集</summary>
+    public Boolean Spooling { get; init; }
+
     /// <summary>协调器基地址，始终以斜杠结尾</summary>
     public Uri BaseAddress { get; init; } = new("http://localhost:8080/");
     #endregion
@@ -162,6 +165,7 @@ internal sealed class PrestoConnectionOptions
             RetryInterval = builder.RetryInterval,
             TestConnection = builder.TestConnection,
             Compression = builder.Compression,
+            Spooling = builder.Spooling,
             BaseAddress = BuildBaseAddress(builder.Host, builder.Port, builder.UseSsl, NormalizePath(builder.Path)),
         };
     }

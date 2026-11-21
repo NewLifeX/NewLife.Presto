@@ -56,3 +56,6 @@
 "The OAuth2 token endpoint returned no access token.": "OAuth2-token-endepunktet returnerte ingen tilgangstoken."
 "Query id cannot be empty.": "Spørrings-ID-en kan ikke være tom."
 "Unsupported complex type mode: {0}. Use String or Structured.": "Ustøttet modus for komplekse typer: {0}. Bruk String eller Structured."
+"Spooling is only supported with the Trino protocol.": "Spooling støttes bare med Trino-protokollen."
+"Unsupported query data encoding '{0}'. Only uncompressed JSON is supported.": "Koding av spørringsdata '{0}' støttes ikke. Bare ukomprimert JSON støttes."
+"Unsupported spooled segment type: {0}.": "Ikke-støttet segmenttype: {0}."

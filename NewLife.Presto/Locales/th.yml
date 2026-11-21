@@ -56,3 +56,6 @@
 "The OAuth2 token endpoint returned no access token.": "ปลายทางโทเค็น OAuth2 ไม่ส่งคืนโทเค็นการเข้าถึง"
 "Query id cannot be empty.": "รหัสคำค้นหาต้องไม่ว่างเปล่า"
 "Unsupported complex type mode: {0}. Use String or Structured.": "ไม่รองรับโหมดชนิดข้อมูลซับซ้อน: {0} ให้ใช้ String หรือ Structured"
+"Spooling is only supported with the Trino protocol.": "Spooling รองรับเฉพาะโปรโตคอล Trino เท่านั้น"
+"Unsupported query data encoding '{0}'. Only uncompressed JSON is supported.": "ไม่รองรับการเข้ารหัสข้อมูลคิวรี '{0}' รองรับเฉพาะ JSON ที่ไม่บีบอัดเท่านั้น"
+"Unsupported spooled segment type: {0}.": "ไม่รองรับประเภทเซกเมนต์: {0}"

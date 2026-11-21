@@ -56,3 +56,6 @@
 "The OAuth2 token endpoint returned no access token.": "نقطه پایانی توکن OAuth2 هیچ توکن دسترسی برنگرداند."
 "Query id cannot be empty.": "شناسه پرس‌وجو نمی‌تواند خالی باشد."
 "Unsupported complex type mode: {0}. Use String or Structured.": "حالت نوع پیچیده پشتیبانی نمی‌شود: {0}. از String یا Structured استفاده کنید."
+"Spooling is only supported with the Trino protocol.": "Spooling فقط با پروتکل Trino پشتیبانی می‌شود."
+"Unsupported query data encoding '{0}'. Only uncompressed JSON is supported.": "کدگذاری داده‌های پرس‌وجو '{0}' پشتیبانی نمی‌شود. فقط JSON فشرده‌نشده پشتیبانی می‌شود."
+"Unsupported spooled segment type: {0}.": "نوع قطعه پشتیبانی‌نشده: {0}."

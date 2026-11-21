@@ -56,3 +56,6 @@
 "The OAuth2 token endpoint returned no access token.": "Het OAuth2-token-eindpunt heeft geen toegangstoken geretourneerd."
 "Query id cannot be empty.": "Query-id mag niet leeg zijn."
 "Unsupported complex type mode: {0}. Use String or Structured.": "Niet-ondersteunde modus voor complexe typen: {0}. Gebruik String of Structured."
+"Spooling is only supported with the Trino protocol.": "Spooling wordt alleen ondersteund met het Trino-protocol."
+"Unsupported query data encoding '{0}'. Only uncompressed JSON is supported.": "Codering van querygegevens '{0}' wordt niet ondersteund. Alleen ongecomprimeerde JSON wordt ondersteund."
+"Unsupported spooled segment type: {0}.": "Niet-ondersteund segmenttype: {0}."

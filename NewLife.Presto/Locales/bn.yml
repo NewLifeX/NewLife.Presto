@@ -56,3 +56,6 @@
 "The OAuth2 token endpoint returned no access token.": "OAuth2 টোকেন এন্ডপয়েন্ট কোনো অ্যাক্সেস টোকেন ফেরত দেয়নি।"
 "Query id cannot be empty.": "কোয়েরি আইডি খালি হতে পারে না।"
 "Unsupported complex type mode: {0}. Use String or Structured.": "জটিল প্রকারের মোড সমর্থিত নয়: {0}। String বা Structured ব্যবহার করুন।"
+"Spooling is only supported with the Trino protocol.": "Spooling শুধুমাত্র Trino প্রোটোকলের সাথে সমর্থিত।"
+"Unsupported query data encoding '{0}'. Only uncompressed JSON is supported.": "অসমর্থিত কোয়েরি ডেটা এনকোডিং '{0}'। শুধুমাত্র আনকম্প্রেসড JSON সমর্থিত।"
+"Unsupported spooled segment type: {0}.": "অসমর্থিত স্পুলড সেগমেন্ট ধরন: {0}।"

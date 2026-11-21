@@ -24,6 +24,12 @@ public sealed class PrestoQueryResults
     /// <summary>当前页数据行</summary>
     public IList<IList<Object?>> Data { get; init; } = [];
 
+    /// <summary>当前页数据编码；空表示直接协议</summary>
+    internal String? DataEncoding { get; init; }
+
+    /// <summary>当前页的 Spooling 分段；按结果顺序排列</summary>
+    internal IList<PrestoQuerySegment> Segments { get; init; } = [];
+
     /// <summary>查询统计</summary>
     public PrestoQueryStats? Stats { get; init; }
 

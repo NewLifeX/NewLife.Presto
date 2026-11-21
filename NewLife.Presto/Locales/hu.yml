@@ -56,3 +56,6 @@
 "The OAuth2 token endpoint returned no access token.": "Az OAuth2-jogkivonat végpont nem adott vissza hozzáférési tokent."
 "Query id cannot be empty.": "A lekérdezés-azonosító nem lehet üres."
 "Unsupported complex type mode: {0}. Use String or Structured.": "Nem támogatott összetett típusmód: {0}. Használjon String vagy Structured értéket."
+"Spooling is only supported with the Trino protocol.": "A Spooling csak a Trino protokollal támogatott."
+"Unsupported query data encoding '{0}'. Only uncompressed JSON is supported.": "Nem támogatott lekérdezésiadat-kódolás: '{0}'. Csak a tömörítetlen JSON támogatott."
+"Unsupported spooled segment type: {0}.": "Nem támogatott szegmenstípus: {0}."
