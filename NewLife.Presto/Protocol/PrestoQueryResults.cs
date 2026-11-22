@@ -11,6 +11,12 @@ public sealed class PrestoQueryResults
 {
     private IList<IList<Object?>>? _data;
 
+    /// <summary>无列定义时的共享空数组；net45 没有 Array.Empty</summary>
+    internal static readonly PrestoColumn[] NoColumns = new PrestoColumn[0];
+
+    /// <summary>无警告时的共享空数组</summary>
+    internal static readonly PrestoWarning[] NoWarnings = new PrestoWarning[0];
+
     /// <summary>查询编号</summary>
     public String? Id { get; init; }
 
@@ -21,7 +27,7 @@ public sealed class PrestoQueryResults
     public String? NextUri { get; init; }
 
     /// <summary>列定义</summary>
-    public IList<PrestoColumn> Columns { get; init; } = [];
+    public IList<PrestoColumn> Columns { get; init; } = NoColumns;
 
     /// <summary>当前页数据行</summary>
     /// <remarks>流式解析时数据以扁平行数组保存，首次访问本属性才展开为行列表。</remarks>
@@ -50,7 +56,7 @@ public sealed class PrestoQueryResults
     public PrestoQueryStats? Stats { get; init; }
 
     /// <summary>警告列表</summary>
-    public IList<PrestoWarning> Warnings { get; init; } = [];
+    public IList<PrestoWarning> Warnings { get; init; } = NoWarnings;
 
     /// <summary>错误对象；非空表示失败</summary>
     public PrestoQueryError? Error { get; init; }

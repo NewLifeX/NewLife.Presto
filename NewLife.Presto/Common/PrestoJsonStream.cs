@@ -187,7 +187,7 @@ internal static partial class PrestoJson
             Id = id,
             InfoUri = infoUri,
             NextUri = nextUri,
-            Columns = columns ?? [],
+            Columns = columns is { Count: > 0 } ? columns : PrestoQueryResults.NoColumns,
             // 扁平数据由 CellBuffer 承载时 Data 留空，首次访问再展开
             Data = data!,
             CellBuffer = cellBuffer,
@@ -196,17 +196,19 @@ internal static partial class PrestoJson
             DataEncoding = dataEncoding,
             Segments = segments ?? [],
             Stats = stats,
-            Warnings = warnings ?? [],
+            Warnings = warnings is { Count: > 0 } ? warnings : PrestoQueryResults.NoWarnings,
             Error = error,
             UpdateType = updateType,
             UpdateCount = updateCount,
         };
     }
 
-    private static List<PrestoColumn> ReadColumns(ref Utf8JsonReader reader, Boolean structured)
+    private static List<PrestoColumn>? ReadColumns(ref Utf8JsonReader reader, Boolean structured)
     {
+        // 没有列的页（queued/executing）直接返回空，省掉一个空列表对象
+        if (reader.TokenType != JsonTokenType.StartArray) return null;
+
         var list = new List<PrestoColumn>();
-        if (reader.TokenType != JsonTokenType.StartArray) return list;
 
         while (reader.Read())
         {
@@ -254,7 +256,7 @@ internal static partial class PrestoJson
             });
         }
 
-        return list;
+        return list.Count > 0 ? list : null;
     }
 
     /// <summary>读取 typeSignature.rawType；类型缺失时返回空</summary>
@@ -315,7 +317,7 @@ internal static partial class PrestoJson
             if (reader.ValueTextEquals("state"))
             {
                 reader.Read();
-                state = ReadText(ref reader);
+                state = ReadState(ref reader);
             }
             else if (reader.ValueTextEquals("queuedTimeMillis"))
             {
@@ -382,10 +384,12 @@ internal static partial class PrestoJson
         return value is >= Int32.MinValue and <= Int32.MaxValue ? (Int32)value.GetValueOrDefault() : 0;
     }
 
-    private static List<PrestoWarning> ReadWarnings(ref Utf8JsonReader reader)
+    private static List<PrestoWarning>? ReadWarnings(ref Utf8JsonReader reader)
     {
+        // 绝大多数页的 warnings 是空数组，直接返回空省掉一个列表对象
+        if (reader.TokenType != JsonTokenType.StartArray) return null;
+
         var list = new List<PrestoWarning>();
-        if (reader.TokenType != JsonTokenType.StartArray) return list;
 
         while (reader.Read())
         {
@@ -440,7 +444,7 @@ internal static partial class PrestoJson
             });
         }
 
-        return list;
+        return list.Count > 0 ? list : null;
     }
     #endregion
 
@@ -735,6 +739,21 @@ internal static partial class PrestoJson
     private static String? ReadSharedText(ref Utf8JsonReader reader, String? known)
     {
         if (known != null && reader.TokenType == JsonTokenType.String && reader.ValueTextEquals(known)) return known;
+
+        return ReadText(ref reader);
+    }
+
+    /// <summary>读取查询状态；常见状态复用常量实例</summary>
+    private static String? ReadState(ref Utf8JsonReader reader)
+    {
+        if (reader.TokenType == JsonTokenType.String)
+        {
+            if (reader.ValueTextEquals(PrestoStates.Queued)) return PrestoStates.Queued;
+            if (reader.ValueTextEquals(PrestoStates.Running)) return PrestoStates.Running;
+            if (reader.ValueTextEquals(PrestoStates.Finished)) return PrestoStates.Finished;
+            if (reader.ValueTextEquals(PrestoStates.Failed)) return PrestoStates.Failed;
+            if (reader.ValueTextEquals(PrestoStates.Canceled)) return PrestoStates.Canceled;
+        }
 
         return ReadText(ref reader);
     }
