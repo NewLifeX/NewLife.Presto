@@ -96,6 +96,38 @@ public abstract class DbRunnerBase : IRunner
         return count;
     }
 
+    /// <summary>读取全部结果行并累计宽表校验值（列数由查询决定），返回行数</summary>
+    /// <param name="sql">查询语句</param>
+    public Int64 ReadWide(String sql)
+    {
+        var conn = _connection ?? throw new InvalidOperationException("Connection is not open");
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = sql;
+        using var reader = cmd.ExecuteReader();
+
+        var count = 0;
+        var sum = 0L;
+        var fields = reader.FieldCount;
+        while (reader.Read())
+        {
+            for (var i = 0; i < fields; i++) sum += WideValue(reader.GetValue(i));
+            count++;
+        }
+
+        Checksum = sum;
+        return count;
+    }
+
+    /// <summary>宽表单元格折算成整数：整数取值、字符串取长度</summary>
+    internal static Int64 WideValue(Object? value) => value switch
+    {
+        null or DBNull => 0,
+        Int64 v => v,
+        Int32 v => v,
+        String v => v.Length,
+        _ => Convert.ToInt64(value, CultureInfo.InvariantCulture),
+    };
+
     private static Int64 ToInt64(Object? value) => value switch
     {
         null or DBNull => 0,

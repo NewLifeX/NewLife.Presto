@@ -101,6 +101,10 @@ public sealed class RawHttpRunner : IRunner
         return rows.Count;
     }
 
+    /// <summary>读取全部结果行并累计宽表校验值（列数由查询决定），返回行数</summary>
+    /// <param name="sql">查询语句</param>
+    public Int64 ReadWide(String sql) => ReadColumns(sql);
+
     /// <summary>提交查询并跟随 nextUri 拉取全部结果</summary>
     /// <param name="sql">查询语句</param>
     /// <param name="keepRows">是否保留全部数据行，false 时取到首个数据页即返回</param>

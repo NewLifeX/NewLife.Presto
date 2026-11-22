@@ -94,11 +94,16 @@ public sealed class BenchmarkRunner(BenchmarkOptions options, Action<String> log
                 var columnNote = columnRows == ColumnRows && probe.Checksum == ColumnsChecksum ? "数据一致" : $"行数 {columnRows}，校验和 {probe.Checksum}（期望 {ColumnsChecksum}）";
                 log($"  多列预热完成：{columnRows} 行，{columnNote}");
 
+                var wideRows = probe.ReadWide(WideSql);
+                var wideNote = wideRows == ColumnRows && probe.Checksum == WideChecksum ? "数据一致" : $"行数 {wideRows}，校验和 {probe.Checksum}（期望 {WideChecksum}）";
+                log($"  宽表预热完成：{wideRows} 行，{wideNote}");
+
                 results.Add(MeasureConnect(descriptor));
                 results.Add(Measure(descriptor, "标量查询 SELECT 1", options.ScalarIterations, probe, r => r.ExecuteScalar(ScalarSql)));
                 results.Add(Measure(descriptor, $"聚合 {options.Rows} 行", options.AggregateIterations, probe, r => r.ExecuteScalar(AggregateSql)));
                 results.Add(Measure(descriptor, $"扫描 {options.Rows} 行", options.ScanIterations, probe, r => r.ReadAll(ScanSql)));
                 results.Add(Measure(descriptor, $"多列类型 {ColumnRows} 行", options.ScanIterations, probe, r => r.ReadColumns(ColumnsSql)));
+                results.Add(Measure(descriptor, $"宽表 {WideColumns} 列 {ColumnRows} 行", options.ScanIterations, probe, r => r.ReadWide(WideSql)));
                 results.Add(await MeasureConcurrencyAsync(descriptor));
 
                 statuses.Add(new ClientStatus(descriptor.Name, descriptor.Category, true, checksum, note));
@@ -136,6 +141,35 @@ public sealed class BenchmarkRunner(BenchmarkOptions options, Action<String> log
 
     private String ColumnsSql =>
         $"SELECT x, CAST(x AS varchar) || 'abcdefghij', CAST(x AS decimal(12,2)) / 4, date_add('day', x % 300, DATE '2020-01-01') FROM UNNEST(sequence(1, {ColumnRows})) AS t(x)";
+
+    /// <summary>宽表列数</summary>
+    private const Int32 WideColumns = 16;
+
+    /// <summary>宽表：10 个整数 + 6 个字符串，单页 5000 行即 8 万个单元格，专门压单页多列路径</summary>
+    /// <remarks>混合类型由“多列类型”场景覆盖；这里只用整数与字符串，避免各客户端对 decimal/date 的取值类型差异干扰对比。</remarks>
+    private String WideSql =>
+        "SELECT x, x * 2, x * 3, x * 4, x * 5, x * 6, x * 7, x * 8, x * 9, x * 10, " +
+        "CAST(x AS varchar) || 'a', CAST(x AS varchar) || 'bb', CAST(x AS varchar) || 'ccc', " +
+        "CAST(x AS varchar) || 'dddd', CAST(x AS varchar) || 'eeeee', CAST(x AS varchar) || 'ffffff' " +
+        $"FROM UNNEST(sequence(1, {ColumnRows})) AS t(x)";
+
+    /// <summary>宽表校验和：整数求和、字符串取长度</summary>
+    private Int64 WideChecksum
+    {
+        get
+        {
+            var sum = 0L;
+            for (var i = 1; i <= ColumnRows; i++)
+            {
+                // 10 个整数列：x * (1+2+..+10)
+                sum += i * 55;
+                // 6 个字符串列：位数 + 1..6 个填充字符
+                sum += i.ToString(CultureInfo.InvariantCulture).Length * 6 + 21;
+            }
+
+            return sum;
+        }
+    }
 
     private Int64 ColumnsChecksum
     {

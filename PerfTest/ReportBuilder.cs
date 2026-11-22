@@ -14,7 +14,7 @@ public static class ReportBuilder
         sb.AppendLine("# Presto/Trino .NET 客户端性能对比");
         sb.AppendLine();
         sb.AppendLine($"> 生成时间：{DateTime.Now:yyyy-MM-dd HH:mm:ss}　引擎：{options.Engine}　端点：{options.Host}:{options.Port}");
-        sb.AppendLine($"> 运行参数：扫描 {options.Rows} 行，多列 5000 行，标量 {options.ScalarIterations} 次，聚合 {options.AggregateIterations} 次，扫描 {options.ScanIterations} 次，连接 {options.ConnectIterations} 次，并发 {options.Concurrency} x {options.ConcurrencyIterations}，预热 {options.Warmup}，重复 {options.Repeat} 轮");
+        sb.AppendLine($"> 运行参数：扫描 {options.Rows} 行，多列 5000 行，宽表 16 列 5000 行，标量 {options.ScalarIterations} 次，聚合 {options.AggregateIterations} 次，扫描 {options.ScanIterations} 次，连接 {options.ConnectIterations} 次，并发 {options.Concurrency} x {options.ConcurrencyIterations}，预热 {options.Warmup}，重复 {options.Repeat} 轮");
         sb.AppendLine();
 
         sb.AppendLine("## 1. 客户端与可用性");
