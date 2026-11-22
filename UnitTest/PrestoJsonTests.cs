@@ -651,30 +651,60 @@ public class PrestoJsonTests
     [Fact(DisplayName = "整页单元格超过阈值时退回行列表并保留实际单元格")]
     public void StreamingWidePageFallsBackToRows()
     {
+        // 8 列 × 33000 行 = 26.4 万单元格，刚好越过扁平数组上限（26.2 万）
+        const Int32 Columns = 8;
         var cells = new List<String>();
-        for (var i = 0; i < 11000; i++)
+        for (var i = 0; i < 33000; i++)
         {
-            cells.Add($"[{i}, {i}, {i}]");
+            cells.Add("[" + String.Join(",", Enumerable.Repeat(i.ToString(), Columns)) + "]");
         }
 
-        // 首行多一格、次行少两格，覆盖回退路径的裁剪与忽略逻辑
-        cells[0] = "[0, 0, 0, 9]";
+        // 首行多一格、次行少七格，覆盖回退路径的裁剪与忽略逻辑
+        cells[0] = "[" + String.Join(",", Enumerable.Repeat("0", Columns + 1)) + "]";
         cells[1] = "[1]";
 
+        var columns = "[" + String.Join(",", Enumerable.Range(0, Columns).Select(i => $$"""{ "name": "c{{i}}", "type": "integer" }""")) + "]";
         var json = $$"""
         {
-          "columns": [ { "name": "a", "type": "integer" }, { "name": "b", "type": "integer" }, { "name": "c", "type": "integer" } ],
+          "columns": {{columns}},
           "data": [ {{String.Join(",", cells)}} ]
         }
         """;
 
         var results = PrestoJson.ParseResults(json);
 
-        Assert.Equal(11000, results.Data.Count);
-        Assert.Equal(3, results.Data[0].Count);
+        Assert.Equal(33000, results.Data.Count);
+        Assert.Equal(Columns, results.Data[0].Count);
         Assert.Single(results.Data[1]);
-        Assert.Equal(3, results.Data[10999].Count);
-        Assert.Equal(10999, results.Data[10999][2]);
+        Assert.Equal(Columns, results.Data[32999].Count);
+        Assert.Equal(32999, results.Data[32999][Columns - 1]);
+    }
+
+    [Fact(DisplayName = "宽页在扁平数组上限内不再退回行列表")]
+    public void StreamingWidePageKeepsFlatBuffer()
+    {
+        // 16 列 × 5000 行 = 8 万单元格；旧上限（3.2 万）会退回行列表，现在应保持扁平存储
+        const Int32 Columns = 16;
+        var cells = new List<String>();
+        for (var i = 0; i < 5000; i++)
+        {
+            cells.Add("[" + String.Join(",", Enumerable.Repeat(i.ToString(), Columns)) + "]");
+        }
+
+        var columns = "[" + String.Join(",", Enumerable.Range(0, Columns).Select(i => $$"""{ "name": "c{{i}}", "type": "integer" }""")) + "]";
+        var json = $$"""
+        {
+          "columns": {{columns}},
+          "data": [ {{String.Join(",", cells)}} ]
+        }
+        """;
+
+        var results = PrestoJson.ParseResults(json);
+
+        Assert.NotNull(results.CellBuffer);
+        Assert.Equal(Columns, results.CellArity);
+        Assert.Equal(5000, results.RowCount);
+        Assert.Equal(4999, results.Data[4999][Columns - 1]);
     }
 
     [Fact(DisplayName = "扁平行缓冲区缺行或列数异常时返回空集")]

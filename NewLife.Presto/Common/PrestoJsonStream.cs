@@ -454,7 +454,11 @@ internal static partial class PrestoJson
     private static readonly Object _falseValue = false;
 
     /// <summary>单页扁平行数组的单元格上限，超过则退回行列表，避免单页缓冲区过大</summary>
-    private const Int32 MaxFlatCells = 32768;
+    /// <remarks>
+    /// 扁平行数组比逐行数组更省：少掉每行一个对象数组和列表扩容，宽表页（如 16 列 × 5000 行 = 8 万单元格）
+    /// 实测快 40%。因此上限放到 26 万单元格（最坏 2 MB 单块数组），足以覆盖 5000 行 × 52 列以内的常见宽表。
+    /// </remarks>
+    private const Int32 MaxFlatCells = 262144;
 
     /// <summary>单页数据：扁平行数组或行列表二选一</summary>
     private sealed class PageData
