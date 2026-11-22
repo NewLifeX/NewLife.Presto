@@ -82,3 +82,27 @@ internal static class PrestoAuthProvider
         return "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes(text));
     }
 }
+
+/// <summary>Bearer 认证头缓存</summary>
+/// <remarks>
+/// 令牌通常是数百字节的 JWT，而一次查询要发 5~6 个请求；每请求重新拼接会产生数百字节到数 KB 的临时垃圾。
+/// 令牌刷新（回调返回新令牌、OAuth2 重新换取）时按值比较自动失效。
+/// </remarks>
+internal sealed class PrestoBearerCache
+{
+    private String? _token;
+    private Task<String?>? _header;
+
+    /// <summary>按令牌值获取认证头任务；令牌未变时复用同一个任务实例</summary>
+    /// <param name="token">访问令牌</param>
+    /// <returns>认证头任务</returns>
+    public Task<String?> Get(String token)
+    {
+        var cached = _header;
+        if (cached != null && String.Equals(_token, token, StringComparison.Ordinal)) return cached;
+
+        _token = token;
+
+        return _header = Task.FromResult<String?>("Bearer " + token);
+    }
+}

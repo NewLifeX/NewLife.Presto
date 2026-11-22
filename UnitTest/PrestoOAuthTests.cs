@@ -134,6 +134,21 @@ public class PrestoOAuthTests
         Assert.Contains("1", ex.Message);
     }
 
+    [Fact(DisplayName = "OAuth2 认证头在令牌有效期内复用同一实例")]
+    public async Task AuthorizationIsCached()
+    {
+        var handler = new FakePrestoHandler();
+        handler.EnqueueJson(TokenJson);
+        var options = PrestoConnectionOptions.From(new PrestoConnectionStringBuilder("Host=localhost" + Extra));
+        using var provider = new PrestoOAuthTokenProvider(options, handler);
+
+        var first = await provider.GetAuthorizationAsync(default);
+        var second = await provider.GetAuthorizationAsync(default);
+
+        Assert.Equal("Bearer abc", first);
+        Assert.Same(first, second);
+    }
+
     [Fact(DisplayName = "关闭连接释放 OAuth2 令牌提供者")]
     public void DisposeProvider()
     {

@@ -25,6 +25,7 @@ internal sealed class PrestoStatementClient
     private Boolean _completed;
     private String? _basicAuthorization;
     private Task<String?>? _basicAuthTask;
+    private readonly PrestoBearerCache _bearerCache = new();
     private Boolean _syncUnsupported;
     private Boolean _finished;
     private static readonly String _userAgent = "NewLife.Presto/" + PrestoDriver.Version;
@@ -498,6 +499,9 @@ internal sealed class PrestoStatementClient
         // Basic 认证头只与连接凭据有关，按语句客户端缓存，避免每次请求重复 Base64
         if (_options.Auth == PrestoAuth.Basic) return _basicAuthTask ??= Task.FromResult<String?>(_basicAuthorization ??= PrestoAuthProvider.BuildBasic(_options));
 
+        // JWT 与显式令牌回调每请求都会重新读取令牌，但令牌通常不变，按令牌值缓存认证头
+        if (TryGetBearerToken(out var token)) return GetBearerTask(token);
+
         return PrestoAuthProvider.GetAuthorizationAsync(_options, AccessTokenProvider, OAuthTokenProvider, cancellationToken);
     }
 
@@ -506,12 +510,34 @@ internal sealed class PrestoStatementClient
         // Basic 认证头只与连接凭据有关，按语句客户端缓存，避免每次请求重复 Base64
         if (_options.Auth == PrestoAuth.Basic) return _basicAuthorization ??= PrestoAuthProvider.BuildBasic(_options);
 
+        // JWT 与显式令牌回调每请求都会重新读取令牌，但令牌通常不变，按令牌值缓存认证头
+        if (TryGetBearerToken(out var token)) return GetBearerTask(token).GetAwaiter().GetResult();
+
         // OAuth2 可能需要在令牌端点做异步请求，同步路径阻塞等待
         if (_options.Auth == PrestoAuth.OAuth2)
             return PrestoAuthProvider.GetAuthorizationAsync(_options, AccessTokenProvider, OAuthTokenProvider, cancellationToken).GetAwaiter().GetResult();
 
         return PrestoAuthProvider.GetAuthorization(_options, AccessTokenProvider);
     }
+
+    /// <summary>取出可缓存的 Bearer 令牌；缺失令牌时交给 <see cref="PrestoAuthProvider"/> 统一报错</summary>
+    private Boolean TryGetBearerToken(out String token)
+    {
+        token = null!;
+
+        var auth = _options.Auth;
+        if (auth != PrestoAuth.Jwt && auth != PrestoAuth.OAuth2) return false;
+
+        var value = AccessTokenProvider?.Invoke();
+        if (value.IsNullOrEmpty() && auth == PrestoAuth.Jwt) value = _options.AccessToken;
+        if (value.IsNullOrEmpty()) return false;
+
+        token = value;
+        return true;
+    }
+
+    /// <summary>按令牌值缓存 Bearer 认证头。长令牌拼接一次约 600 字节，单次查询要发 5~6 个请求，不能每请求重拼</summary>
+    private Task<String?> GetBearerTask(String token) => _bearerCache.Get(token);
 
     private HttpRequestMessage CreateRequest(HttpMethod method, Uri uri, CancellationToken cancellationToken)
         => CreateRequestCore(method, uri, GetAuthorization(cancellationToken));
@@ -639,9 +665,9 @@ internal sealed class PrestoStatementClient
     }
 
     private static Boolean IsTerminalState(String state)
-        => state.Equals("FINISHED", StringComparison.OrdinalIgnoreCase)
-        || state.Equals("FAILED", StringComparison.OrdinalIgnoreCase)
-        || state.Equals("CANCELED", StringComparison.OrdinalIgnoreCase)
+        => state.Equals(PrestoStates.Finished, StringComparison.OrdinalIgnoreCase)
+        || state.Equals(PrestoStates.Failed, StringComparison.OrdinalIgnoreCase)
+        || state.Equals(PrestoStates.Canceled, StringComparison.OrdinalIgnoreCase)
         || state.Equals("CANCELLED", StringComparison.OrdinalIgnoreCase);
 
     private PrestoException CreateHttpException(Uri uri, HttpResponseMessage response, String body)

@@ -41,6 +41,26 @@ public class PrestoInfrastructureTests
         Assert.Equal("Bearer fixed", await PrestoAuthProvider.GetAuthorizationAsync(options, () => "", null, CancellationToken.None));
     }
 
+    [Fact(DisplayName = "Bearer 认证头按令牌缓存")]
+    public async Task BearerCache()
+    {
+        var cache = new PrestoBearerCache();
+        var token = "eyJhbGciOiJIUzI1NiJ9." + new String('x', 256) + ".sig";
+
+        var first = cache.Get(token);
+        var second = cache.Get(new String(token.ToCharArray()));
+
+        Assert.Same(first, second);
+        Assert.Equal("Bearer " + token, await first);
+
+        var rotated = cache.Get("next-token");
+        Assert.NotSame(first, rotated);
+        Assert.Equal("Bearer next-token", await rotated);
+
+        // 令牌又变回旧值时重建，不复用旧任务
+        Assert.NotSame(first, cache.Get(token));
+    }
+
     [Fact(DisplayName = "同步认证头覆盖 Basic/JWT/无认证")]
     public void SyncAuthorization()
     {

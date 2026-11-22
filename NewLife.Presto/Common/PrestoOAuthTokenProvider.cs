@@ -21,6 +21,7 @@ internal sealed class PrestoOAuthTokenProvider : IDisposable
     private readonly Boolean _ownsClient;
     private String? _token;
     private String _tokenType = "Bearer";
+    private String? _authorization;
     private DateTime _expireTime = DateTime.MinValue;
     #endregion
 
@@ -64,7 +65,8 @@ internal sealed class PrestoOAuthTokenProvider : IDisposable
 
     private Boolean IsValid => _token != null && DateTime.UtcNow < _expireTime;
 
-    private String BuildHeader() => _tokenType + " " + _token;
+    // 令牌有效期通常数百秒，期间每个请求都会取头，拼接结果随令牌一起缓存
+    private String BuildHeader() => _authorization ??= _tokenType + " " + _token;
 
     private async Task AcquireAsync(CancellationToken cancellationToken)
     {
@@ -107,6 +109,7 @@ internal sealed class PrestoOAuthTokenProvider : IDisposable
             // 提前刷新：取生命周期的 20%，最多 60 秒
             var margin = Math.Min(60, lifetime / 5);
             _token = token;
+            _authorization = null;
             _tokenType = PrestoJson.GetString(dic, "token_type") is { Length: > 0 } type ? type : "Bearer";
             _expireTime = DateTime.UtcNow.AddSeconds(lifetime - margin);
         }

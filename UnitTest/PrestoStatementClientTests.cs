@@ -233,6 +233,23 @@ public class PrestoStatementClientTests
         }
     }
 
+    [Fact(DisplayName = "JWT 令牌刷新后新请求使用新令牌")]
+    public async Task JwtTokenRotatesMidQuery()
+    {
+        var (client, handler, _) = CreateClient(";Auth=JWT;AccessToken=first");
+        var token = "first";
+        client.AccessTokenProvider = () => token;
+        handler.EnqueueJson("""{ "id": "q1", "columns": [], "data": [], "nextUri": "/v1/statement/q1/1" }""");
+        handler.EnqueueJson("""{ "id": "q1", "columns": [], "data": [] }""");
+
+        var first = await client.SubmitAsync("select 1", CancellationToken.None);
+        token = "second";
+        await client.FetchAsync(first.NextUri!, CancellationToken.None);
+
+        Assert.Equal("Bearer first", handler.Requests[0].Headers.Authorization!.ToString());
+        Assert.Equal("Bearer second", handler.Requests[1].Headers.Authorization!.ToString());
+    }
+
     [Fact(DisplayName = "轮询相对 nextUri")]
     public async Task PollRelativeNextUri()
     {
