@@ -61,6 +61,15 @@ public class PrestoInfrastructureTests
         Assert.NotSame(first, cache.Get(token));
     }
 
+    [Fact(DisplayName = "OAuth2 显式令牌回调直接生成 Bearer 头")]
+    public async Task OAuth2TokenCallback()
+    {
+        var options = PrestoConnectionOptions.From(new PrestoConnectionStringBuilder("Host=localhost;Auth=OAuth2;TokenEndpoint=https://idp.local/token;ClientId=cid"));
+
+        Assert.Equal("Bearer abc", await PrestoAuthProvider.GetAuthorizationAsync(options, () => "abc", null, CancellationToken.None));
+        Assert.Throws<PrestoException>(() => PrestoAuthProvider.GetAuthorizationAsync(options, () => "", null, CancellationToken.None).GetAwaiter().GetResult());
+    }
+
     [Fact(DisplayName = "同步认证头覆盖 Basic/JWT/无认证")]
     public void SyncAuthorization()
     {

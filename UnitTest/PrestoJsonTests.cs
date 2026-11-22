@@ -477,6 +477,84 @@ public class PrestoJsonTests
         Assert.Null(PrestoJson.ParseResults("""{ "updateCount": true }""").UpdateCount);
     }
 
+    [Fact(DisplayName = "统计状态覆盖失败/取消/未知，整型越界归零")]
+    public void StreamingStateAndInt32Edges()
+    {
+        Assert.Equal("FAILED", PrestoJson.ParseResults("""{ "stats": { "state": "FAILED" } }""").Stats!.State);
+        Assert.Equal("CANCELED", PrestoJson.ParseResults("""{ "stats": { "state": "CANCELED" } }""").Stats!.State);
+        Assert.Equal("PLANNING", PrestoJson.ParseResults("""{ "stats": { "state": "PLANNING" } }""").Stats!.State);
+
+        // 超出 Int32 上下限的计数都按 0 处理，不影响其它字段
+        var high = PrestoJson.ParseResults("""{ "stats": { "state": "RUNNING", "nodes": 5000000000, "completedSplits": 3 } }""").Stats!;
+        Assert.Equal(0, high.TotalSplits);
+        Assert.Equal(3, high.CompletedSplits);
+
+        var low = PrestoJson.ParseResults("""{ "stats": { "state": "RUNNING", "nodes": -5000000000 } }""").Stats!;
+        Assert.Equal(0, low.TotalSplits);
+    }
+
+    [Fact(DisplayName = "两字节 BOM 前缀与仅 BOM 正文的边界")]
+    public void Utf8PartialBom()
+    {
+        Assert.Throws<PrestoException>(() => PrestoJson.ParseResultsUtf8(new Byte[] { 0xEF, 0xBB }));
+
+        // 只有 BOM 的正文等同于空响应
+        Assert.Empty(PrestoJson.ParseRowsUtf8(new Byte[] { 0xEF, 0xBB, 0xBF }));
+    }
+
+    [Fact(DisplayName = "空数组与非数组的列/警告降级为空")]
+    public void StreamingEmptyCollections()
+    {
+        Assert.Empty(PrestoJson.ParseResults("""{ "warnings": [] }""").Warnings);
+        Assert.Empty(PrestoJson.ParseResults("""{ "warnings": "x" }""").Warnings);
+        Assert.Empty(PrestoJson.ParseResults("""{ "columns": [] }""").Columns);
+    }
+
+    [Fact(DisplayName = "布尔与空值单元格")]
+    public void StreamingBooleanAndNullCells()
+    {
+        var results = PrestoJson.ParseResults("""
+        {
+          "columns": [ { "name": "a", "type": "boolean" }, { "name": "b", "type": "boolean" }, { "name": "c", "type": "varchar" } ],
+          "data": [ [ true, false, null ] ]
+        }
+        """);
+
+        Assert.Equal(true, results.Data[0][0]);
+        Assert.Equal(false, results.Data[0][1]);
+        Assert.Null(results.Data[0][2]);
+    }
+
+    [Fact(DisplayName = "扁平行中空行保留实际单元格，多格行按列数裁剪")]
+    public void StreamingFlatIrregularRows()
+    {
+        var results = PrestoJson.ParseResults("""
+        {
+          "columns": [ { "name": "a", "type": "integer" } ],
+          "data": [ [ 1 ], [], [ 2, 3 ] ]
+        }
+        """);
+
+        Assert.Equal(3, results.Data.Count);
+        Assert.Single(results.Data[0]);
+        Assert.Empty(results.Data[1]);
+        Assert.Single(results.Data[2]);
+        Assert.Equal(2, results.Data[2][0]);
+    }
+
+    [Fact(DisplayName = "时间戳带时区或分隔符不符时回退字符串")]
+    public void StreamingTimestampFallbacks()
+    {
+        var results = PrestoJson.ParseResults("""
+        {
+          "columns": [ { "name": "t", "type": "timestamp(3)" } ],
+          "data": [ [ "2020-01-02 03:04:05.678+08:00" ], [ "2020/01/02 03:04:05" ], [ "2020-01-02" ] ]
+        }
+        """);
+
+        for (var i = 0; i < results.Data.Count; i++) Assert.IsType<String>(results.Data[i][0]);
+    }
+
     [Fact(DisplayName = "类型签名与警告字段宽容解析")]
     public void StreamingColumnsAndWarningsDetails()
     {

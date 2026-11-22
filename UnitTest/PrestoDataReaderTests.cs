@@ -226,6 +226,33 @@ public class PrestoDataReaderTests
         }
     }
 
+    [Fact(DisplayName = "GetValues 空数组与 CloseConnection 行为")]
+    public void GetValuesGuards()
+    {
+        var (reader, _, connection) = CreateReader("""{ "columns": [{"name":"n","type":"integer"}], "data": [["1"]] }""", CommandBehavior.CloseConnection);
+
+        Assert.True(reader.Read());
+        Assert.Throws<ArgumentNullException>(() => reader.GetValues(null!));
+
+        reader.Close();
+
+        // CloseConnection 关闭读取器时一并关闭连接，重复关闭保持幂等
+        Assert.Equal(ConnectionState.Closed, connection.State);
+        reader.Close();
+    }
+
+    [Fact(DisplayName = "更新语句页面的受影响行数")]
+    public void UpdatePageAffectedRows()
+    {
+        var (reader, _, _) = CreateReader("""{ "id": "q1", "updateType": "INSERT", "updateCount": 3 }""");
+
+        using (reader)
+        {
+            Assert.False(reader.Read());
+            Assert.Equal(3, reader.RecordsAffected);
+        }
+    }
+
     [Fact(DisplayName = "无当前行与越界访问")]
     public void InvalidAccess()
     {

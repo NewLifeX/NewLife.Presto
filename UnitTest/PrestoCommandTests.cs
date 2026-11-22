@@ -27,6 +27,21 @@ public class PrestoCommandTests
         Assert.Equal("q2", command.LastQueryId);
     }
 
+    [Fact(DisplayName = "释放后仍可读取最后一次查询编号")]
+    public void LastQueryIdAfterDispose()
+    {
+        var handler = new FakePrestoHandler();
+        handler.EnqueueJson("""{ "id": "q9", "columns": [{"name":"n","type":"integer"}], "data": [["1"]] }""");
+        var connection = TestHelper.CreateOpenConnection(handler);
+        var command = connection.CreateCommand();
+        command.CommandText = "select 1";
+
+        Assert.Equal(1, command.ExecuteScalar());
+        command.Dispose();
+
+        Assert.Equal("q9", command.LastQueryId);
+    }
+
     [Fact(DisplayName = "ExecuteScalar 无数据返回空")]
     public void ExecuteScalarNoRows()
     {

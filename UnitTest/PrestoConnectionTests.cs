@@ -10,6 +10,24 @@ namespace UnitTest;
 /// <summary>连接与元数据测试</summary>
 public class PrestoConnectionTests
 {
+    [Fact(DisplayName = "关闭状态下连接串可置空、重复关闭与释放幂等")]
+    public void ConnectionStringNullAndCloseIdempotent()
+    {
+        var handler = new FakePrestoHandler();
+        var connection = TestHelper.CreateConnection(handler);
+
+        connection.ConnectionString = null;
+        Assert.Equal(String.Empty, connection.ConnectionString);
+
+        connection.Close();
+        Assert.Equal(ConnectionState.Closed, connection.State);
+
+        // 自持 HttpClient 的释放路径
+        var owned = new PrestoConnection("Host=localhost;Port=8080;User=test;TestConnection=false");
+        owned.Dispose();
+        owned.Dispose();
+    }
+
     [Fact(DisplayName = "打开与关闭状态机")]
     public void OpenCloseState()
     {

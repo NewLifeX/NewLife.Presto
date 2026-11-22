@@ -27,6 +27,27 @@ public class PrestoConnectionStringBuilderTests
         Assert.False(builder.Compression);
     }
 
+    [Fact(DisplayName = "别名与规范键同时存在时以规范键为准")]
+    public void AliasAndCanonicalCoexist()
+    {
+        var builder = new PrestoConnectionStringBuilder("Server=alias.local;Host=canonical.local;User ID=alias;User=canonical");
+
+        Assert.Equal("canonical.local", builder.Host);
+        Assert.Equal("canonical", builder.User);
+        Assert.DoesNotContain("Server=", builder.ConnectionString);
+        Assert.DoesNotContain("User ID=", builder.ConnectionString);
+    }
+
+    [Fact(DisplayName = "键值为空引用时按缺省处理")]
+    public void NullValueFallsBack()
+    {
+        var builder = new PrestoConnectionStringBuilder("Host=localhost");
+        builder["Schema"] = null;
+
+        Assert.Equal(String.Empty, builder.Schema);
+        Assert.Equal(8080, builder.Port);
+    }
+
     /// <summary>XCode 写法归一化</summary>
     [Fact(DisplayName = "XCode 写法归一化")]
     public void XCodeAliasesAreNormalized()
