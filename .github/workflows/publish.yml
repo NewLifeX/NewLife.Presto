@@ -20,6 +20,9 @@ jobs:
   build-publish:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      # 首选仓库密钥；未配置时退回 OIDC 受信发布
+      NUGET_KEY: ${{ secrets.nugetKey }}
 
     steps:
     - uses: actions/checkout@v7
@@ -91,14 +94,22 @@ jobs:
         dotnet nuget push ./out/*.nupkg --skip-duplicate --source https://nuget.pkg.github.com/NewLifeX/index.json --api-key ${{ github.token }}
     - name: NuGet login (OIDC)
       id: nuget-login
+      # 已配置 nugetKey 时跳过，避免不必要的 401 噪声
+      if: env.NUGET_KEY == ''
       continue-on-error: true
       uses: NuGet/login@v1
       with:
         user: BigStone
     - name: Publish to NuGet.org
       id: nuget
+      env:
+        NUGET_API_KEY: ${{ env.NUGET_KEY || steps.nuget-login.outputs.NUGET_API_KEY }}
       run: |
-        dotnet nuget push ./out/*.nupkg --skip-duplicate --source https://api.nuget.org/v3/index.json --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY || secrets.nugetKey }}
+        set -o pipefail
+        dotnet nuget push ./out/*.nupkg --skip-duplicate --source https://api.nuget.org/v3/index.json --api-key "$NUGET_API_KEY" 2>&1 | tee /tmp/nuget-push.log
+        if grep -qi "API key expires" /tmp/nuget-push.log; then
+          echo "::warning::NuGet API key 即将过期，请到 nuget.org 重新生成并更新仓库密钥 nugetKey"
+        fi
     - name: Create GitHub Release
       id: release
       # 仅 tag 推送时创建；手工触发（master 无 tag）只发包
