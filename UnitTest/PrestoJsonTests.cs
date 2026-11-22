@@ -629,6 +629,52 @@ public class PrestoJsonTests
         for (var i = 0; i < invalid.Data.Count; i++) Assert.IsType<String>(invalid.Data[i][0]);
     }
 
+    [Fact(DisplayName = "时间戳按字节直转，带时区或异常格式回退字符串")]
+    public void StreamingTimestamps()
+    {
+        const String json = """
+        {
+          "columns": [
+            { "name": "t1", "type": "timestamp(3)" },
+            { "name": "t2", "type": "timestamp(3)" },
+            { "name": "t3", "type": "timestamp" },
+            { "name": "t4", "type": "timestamp(9)" },
+            { "name": "t5", "type": "timestamp(3) with time zone" },
+            { "name": "t6", "type": "timestamp(3)" }
+          ],
+          "data": [[
+            "2020-01-02 03:04:05.678",
+            "2020-01-02 03:04:05.000",
+            "2020-01-02 03:04:05",
+            "2020-01-02 03:04:05.123456789",
+            "2020-01-02 03:04:05.678 UTC",
+            "2020-01-02 03:04:05.678"
+          ]]
+        }
+        """;
+
+        var results = PrestoJson.ParseResults(json);
+        var row = results.Data[0];
+
+        Assert.IsType<DateTime>(row[0]);
+        Assert.Equal(new DateTime(2020, 1, 2, 3, 4, 5, 678), row[0]);
+        Assert.Equal(new DateTime(2020, 1, 2, 3, 4, 5), row[1]);
+        Assert.Equal(new DateTime(2020, 1, 2, 3, 4, 5), row[2]);
+        // 纳秒只保留到 100 纳秒刻度
+        Assert.Equal(new DateTime(2020, 1, 2, 3, 4, 5).AddTicks(1234567), row[3]);
+        // 带时区的列映射到 DateTimeOffset，解析阶段保留文本
+        Assert.IsType<String>(row[4]);
+
+        // 月/日/时/分/秒越界与不同分隔符都回退字符串
+        var invalid = PrestoJson.ParseResults("""
+        {
+          "columns": [ { "name": "t", "type": "timestamp(3)" } ],
+          "data": [ [ "2020-13-01 00:00:00" ], [ "2020-01-01 25:00:00" ], [ "2020-01-01T00:00:00" ], [ "2020-01-01 00:00" ], [ "2020-01-01 00:00:00." ] ]
+        }
+        """);
+        for (var i = 0; i < invalid.Data.Count; i++) Assert.IsType<String>(invalid.Data[i][0]);
+    }
+
     [Fact(DisplayName = "非数组行触发扁平行数组扩容后按实际单元格回退")]
     public void StreamingNonArrayRowsGrowBuffer()
     {

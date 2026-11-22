@@ -663,7 +663,14 @@ internal static partial class PrestoJson
             {
                 if (Utf8Parser.TryParse(span, out Decimal number, out var consumed) && consumed == span.Length) return number;
             }
-            else if (column.FieldType == typeof(DateTime) && column.Type == "date" && TryParseDate(span, out var date)) return date;
+            else if (column.FieldType == typeof(DateTime))
+            {
+                if (column.Type == "date")
+                {
+                    if (TryParseDate(span, out var date)) return date;
+                }
+                else if (column.Type.StartsWith("timestamp", StringComparison.Ordinal) && TryParseTimestamp(span, out var stamp)) return stamp;
+            }
         }
 
         return reader.GetString();
@@ -683,6 +690,56 @@ internal static partial class PrestoJson
         try
         {
             value = new DateTime(year, month, day);
+            return true;
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>按 yyyy-MM-dd HH:mm:ss[.fffffff] 解析时间戳；带时区或格式不符返回 false</summary>
+    private static Boolean TryParseTimestamp(ReadOnlySpan<Byte> span, out DateTime value)
+    {
+        value = default;
+
+        // 固定长度部分：yyyy-MM-dd HH:mm:ss
+        if (span.Length < 19 || span[4] != '-' || span[7] != '-' || span[10] != ' ' || span[13] != ':' || span[16] != ':') return false;
+
+        var year = (span[0] - '0') * 1000 + (span[1] - '0') * 100 + (span[2] - '0') * 10 + (span[3] - '0');
+        var month = (span[5] - '0') * 10 + (span[6] - '0');
+        var day = (span[8] - '0') * 10 + (span[9] - '0');
+        var hour = (span[11] - '0') * 10 + (span[12] - '0');
+        var minute = (span[14] - '0') * 10 + (span[15] - '0');
+        var second = (span[17] - '0') * 10 + (span[18] - '0');
+
+        // 小数秒最多取 7 位（100 纳秒刻度），再多的位数 DateTime 表达不了
+        var ticks = 0L;
+        var index = 19;
+        if (span.Length > 19 && span[19] == '.')
+        {
+            index = 20;
+            var scale = 1000000L;
+            while (index < span.Length && span[index] >= '0' && span[index] <= '9')
+            {
+                if (scale > 0)
+                {
+                    ticks += (span[index] - '0') * scale;
+                    scale /= 10;
+                }
+
+                index++;
+            }
+
+            if (index == 20) return false;
+        }
+
+        // 时区后缀（如 +08:00、UTC）交给字符串路径
+        if (index != span.Length) return false;
+
+        try
+        {
+            value = new DateTime(year, month, day, hour, minute, second).AddTicks(ticks);
             return true;
         }
         catch (ArgumentOutOfRangeException)

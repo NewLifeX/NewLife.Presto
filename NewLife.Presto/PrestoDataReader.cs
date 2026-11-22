@@ -759,10 +759,9 @@ internal static class PrestoValueConverter
     private static DateTime ToDateTime(Object value)
     {
         var text = PrestoJson.ToText(value)!;
-        if (DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var result))
-            return DateTime.SpecifyKind(result, DateTimeKind.Unspecified);
+        var result = DateTime.Parse(text, CultureInfo.InvariantCulture, DateTimeStyles.None);
 
-        return DateTime.Parse(text, CultureInfo.InvariantCulture, DateTimeStyles.None);
+        return DateTime.SpecifyKind(result, DateTimeKind.Unspecified);
     }
 
     private static DateTimeOffset ToDateTimeOffset(Object value) => DateTimeOffset.Parse(PrestoJson.ToText(value)!, CultureInfo.InvariantCulture, DateTimeStyles.None);

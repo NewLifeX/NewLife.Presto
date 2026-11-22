@@ -200,6 +200,32 @@ public class PrestoDataReaderTests
         }
     }
 
+    [Fact(DisplayName = "非法时间戳文本走通用解析并报错")]
+    public void InvalidTimestampText()
+    {
+        var (reader, _, _) = CreateReader("""{ "columns": [{"name":"ts","type":"timestamp(3)"}], "data": [["2020-99-99 99:99:99"]] }""");
+
+        using (reader)
+        {
+            Assert.True(reader.Read());
+            var ex = Assert.Throws<PrestoException>(() => reader.GetValue(0));
+            Assert.Contains("ts", ex.Message);
+            Assert.Contains("timestamp(3)", ex.Message);
+        }
+    }
+
+    [Fact(DisplayName = "日期列的宽松格式回退到通用解析")]
+    public void LooseDateText()
+    {
+        var (reader, _, _) = CreateReader("""{ "columns": [{"name":"d","type":"date"}], "data": [["2020-1-2"]] }""");
+
+        using (reader)
+        {
+            Assert.True(reader.Read());
+            Assert.Equal(new DateTime(2020, 1, 2), reader.GetDateTime(0));
+        }
+    }
+
     [Fact(DisplayName = "无当前行与越界访问")]
     public void InvalidAccess()
     {
