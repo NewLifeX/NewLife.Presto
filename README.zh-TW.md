@@ -17,9 +17,9 @@
 
 **NewLife.Presto** 是新生命開發團隊出品的純 C# PrestoDB / Trino ADO.NET 驅動程式。它使用官方 HTTP REST v1 用戶端通訊協定，僅依賴 `NewLife.Core`，**零第三方相依**，內建 **33 種執行階段語言**，目標框架涵蓋 `net45` ~ `net11`，`net8.0+` **支援 NativeAOT**。PrestoDB 與 Trino 共用一個套件，透過 `Protocol=Trino`（或 `TrinoHeaders=true`）切換要求標頭。
 
-> **專案狀態**：已實作並通過測試——核心 ADO.NET 驅動 + 唯讀的 EF Core 與 EF6 Provider，建置為三個 NuGet 套件並由同一發行流程打包推送。503 項核心單元測試、EF Provider 測試與真實 Trino/PrestoDB 整合全部通過；Spooling 涵蓋未壓縮 JSON 分段，其餘編碼自動回退直接協定。見[功能清單](Doc/功能清单.md)。
+> **專案狀態**：已實作並通過測試——核心 ADO.NET 驅動 + 唯讀的 EF Core 與 EF6 Provider，建置為三個 NuGet 套件並由同一發行流程打包推送。561 項核心單元測試、EF Provider 測試與真實 Trino/PrestoDB 整合全部通過；Spooling 涵蓋未壓縮 JSON 分段，其餘編碼自動回退直接協定。見[功能清單](Doc/功能清单.md)。
 
-**目錄**: [快速開始](#快速開始) · [為什麼選擇 NewLife.Presto](#為什麼選擇-newlifepresto) · [主要功能](#主要功能) · [平台支援](#平台支援) · [多語言](#多語言) · [文件](#文件) · [參與貢獻](#參與貢獻) · [生態版圖](#生態版圖) · [新生命開發團隊](#新生命開發團隊) · [授權](#授權)
+**目錄**: [快速開始](#快速開始) · [為什麼選擇 NewLife.Presto](#為什麼選擇-newlifepresto) · [對比與基準](#對比與基準) · [主要功能](#主要功能) · [平台支援](#平台支援) · [多語言](#多語言) · [文件](#文件) · [參與貢獻](#參與貢獻) · [生態版圖](#生態版圖) · [新生命開發團隊](#新生命開發團隊) · [授權](#授權)
 
 ---
 
@@ -76,6 +76,27 @@ DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
 - **33 種執行階段語言**：例外、記錄與驅動程式中繼資料均已本地化，英文為源文與退回語言。
 - **NativeAOT 就緒**：通訊協定與型別編解碼不使用執行階段反射；各支援平台均執行 NativeAOT 冒煙。
 
+## 對比與基準
+
+我們在同一輪基準中，把本驅動與其他 .NET ADO.NET Presto/Trino 驅動、原始 HTTP v1 基準放在一起比較：同一處理序、相同 SQL、每個情境 3 輪取中位數，Trino 476 與 PrestoDB 0.300 各跑一遍。
+
+| 維度 | 結果 |
+|------|------|
+| 查詢耗時 | ADO 組內全部查詢情境耗時最低或持平，從連線首查到 1.5 萬列掃描與 16 欄寬表，掃描類差距最大 |
+| 受控記憶體配置 | 全部情境最低，且低於原始 HTTP 基準：為最快競品的 9%–52% |
+| 8 並行 | 與原始 HTTP 基準持平或略低；Trino 上略低於最快競品，PrestoDB 上略高 |
+| 測試環境 | 本機回環、明文、無驗證；多輪排序穩定，絕對值輪間波動 20%–80% |
+
+以上是本專案在單一環境下的實測。完整資料、方法與重現命令見[性能测试](Doc/性能测试.md)，第三方用戶端版本與逐項能力矩陣見[竞品分析](Doc/竞品分析.md)。
+
+**取捨與邊界**
+
+- 驅動不提供交易、DDL、自增欄位與預存程序；EF Core 與 EF6 Provider 唯讀，寫入與移轉會被明確拒絕。
+- Spooling 僅支援未壓縮 JSON 分段，其他編碼回退直接協定。
+- UTF-8 串流解析只在 `net6.0+` 生效；`net45`、`net461`、`netstandard2.x` 走字典路徑，配置更高。
+- 尚未納入基準：AOT 發行後的輸送量、單格超過 64 KB 的超長字串、真實 JWT/OAuth2 閘道。
+- 定位是 ADO.NET 與唯讀 EF Provider，不提供 SDK 風格的查詢 API。
+
 ## 主要功能
 
 <details>
@@ -86,14 +107,14 @@ DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
 | 連接字串別名 | `Host`/`Server`/`Data Source`、`Catalog`/`Database`、`Schema`/`Owner` 與 XCode 寫法相容 |
 | PrestoDB / Trino 雙標頭 | 預設 `Protocol=Presto`；Trino 351+ 用 `Protocol=Trino` 或 `TrinoHeaders=true` |
 | 工作階段內容 | Catalog、Schema、使用者、來源、時區、工作階段屬性與自訂標頭 |
-| 驗證 | Basic、JWT/Bearer 與閘道自訂標頭，敏感性資訊不寫入記錄 |
+| 驗證 | Basic、JWT/Bearer、OAuth2 用戶端認證與閘道自訂標頭，敏感性資訊不寫入記錄 |
 | TLS 與代理 | 預設嚴格驗證憑證；私有 CA 需明確放寬 |
 | 共用 HTTP 傳輸 | 依端點重複使用 `HttpClient`，支援代理、壓縮與逾時 |
 
 </details>
 
 <details>
-<summary><b>查詢與型別</b>（6 項）</summary>
+<summary><b>查詢與型別</b>（8 項）</summary>
 
 | 功能點 | 一句話特點 |
 |--------|------------|
@@ -102,7 +123,9 @@ DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
 | 暫時性重試 | 429/502/503/504，依 `Retry-After` 或指數退避 |
 | `@name` 參數 | 用戶端取代，跳過字串、識別碼與註解 |
 | 型別保真 | 布林、整數、decimal、日期時間、timestamp with time zone、UUID、IP 與二進位 |
-| 複雜型別 | 首版將 `array`/`map`/`row`/`json` 傳回原始字串 |
+| 複雜型別 | `array`/`map`/`row` 預設原始字串；`ComplexTypes=Structured` 傳回 `object[]` 與字典 |
+| `DbBatch`（.NET 6+） | 批次命令依序送出，彙總受影響列數，取消傳播到整批 |
+| Spooling（Trino 466+） | `Spooling=true` 要求未壓縮 JSON 分段，從物件儲存下載並確認 |
 
 </details>
 
@@ -114,7 +137,7 @@ DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
 | `GetSchema` | `MetaDataCollections`、`Tables`、`Columns`、`DataTypes` |
 | XCode 整合 | 預設驅動切換並保留舊驅動退回；不聲稱支援交易、DDL 或自增 |
 | 多語言 | 33 種執行階段語言，編譯期產生，AOT 可用 |
-| 診斷 | 例外與記錄保留查詢 ID、錯誤碼、SQLState 與耗時 |
+| 診斷 | 例外與記錄保留查詢 ID、錯誤碼、SQLState 與耗時；提供唯讀查詢/節點診斷 API |
 | OpenTelemetry | 現代框架提供 `ActivitySource("NewLife.Presto")` |
 | 封裝 | 強式命名、SourceLink、符號套件與 README.nuget.md |
 
@@ -146,6 +169,7 @@ DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
 - [功能清单](Doc/功能清单.md) — 實作/測試/註解三維狀態
 - [架构设计](Doc/架构设计.md) — 元件、通訊協定流程、型別對應與設計決策
 - [竞品分析](Doc/竞品分析.md) — 參考實作、功能矩陣與差距
+- [性能测试](Doc/性能测试.md) — 與 ADO 競品及原始 HTTP 基準的同輪基準
 
 ## 參與貢獻
 

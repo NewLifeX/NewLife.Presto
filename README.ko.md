@@ -17,9 +17,9 @@
 
 **NewLife.Presto**는 NewLife 팀이 만든 PrestoDB / Trino용 순수 C# ADO.NET 드라이버입니다. 공식 HTTP REST v1 클라이언트 프로토콜을 사용하며 `NewLife.Core`에만 의존하는 **타사 종속성 제로** 드라이버입니다. **33개 런타임 언어**를 내장하고 `net45`부터 `net11`까지 지원하며 `net8.0+`에서 **NativeAOT를 지원**합니다. PrestoDB와 Trino는 하나의 패키지를 공유하며 `Protocol=Trino`(또는 `TrinoHeaders=true`)로 요청 헤더를 전환합니다.
 
-> **프로젝트 상태**: 구현 및 테스트 완료 — 핵심 ADO.NET 드라이버와 읽기 전용 EF Core/EF6 Provider를 세 개의 NuGet 패키지로 동일 릴리스 파이프라인에서 제공합니다. 핵심 단위 테스트 503개, EF Provider 테스트, 실제 Trino/PrestoDB 통합이 모두 통과했으며 Spooling은 비압축 JSON 세그먼트를 지원하고 그 외에는 직접 프로토콜로 자동 폴백합니다. [기능 목록](Doc/功能清单.md)을 참조하세요.
+> **프로젝트 상태**: 구현 및 테스트 완료 — 핵심 ADO.NET 드라이버와 읽기 전용 EF Core/EF6 Provider를 세 개의 NuGet 패키지로 동일 릴리스 파이프라인에서 제공합니다. 핵심 단위 테스트 561개, EF Provider 테스트, 실제 Trino/PrestoDB 통합이 모두 통과했으며 Spooling은 비압축 JSON 세그먼트를 지원하고 그 외에는 직접 프로토콜로 자동 폴백합니다. [기능 목록](Doc/功能清单.md)을 참조하세요.
 
-**목차**: [빠른 시작](#빠른-시작) · [NewLife.Presto를 선택하는 이유](#newlifepresto를-선택하는-이유) · [주요 기능](#주요-기능) · [플랫폼 지원](#플랫폼-지원) · [다국어](#다국어) · [문서](#문서) · [기여](#기여) · [생태계 지도](#생태계-지도) · [팀](#팀) · [라이선스](#라이선스)
+**목차**: [빠른 시작](#빠른-시작) · [NewLife.Presto를 선택하는 이유](#newlifepresto를-선택하는-이유) · [비교 및 벤치마크](#비교-및-벤치마크) · [주요 기능](#주요-기능) · [플랫폼 지원](#플랫폼-지원) · [다국어](#다국어) · [문서](#문서) · [기여](#기여) · [생태계 지도](#생태계-지도) · [팀](#팀) · [라이선스](#라이선스)
 
 ---
 
@@ -76,6 +76,27 @@ DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
 - **33개 런타임 언어**: 예외, 로그, 드라이버 메타데이터를 지역화하며 영어가 원문과 대체 언어입니다.
 - **NativeAOT 지원**: 프로토콜과 형식 코덱에서 런타임 리플렉션을 사용하지 않으며 지원 플랫폼에서 AOT 스모크를 실행합니다.
 
+## 비교 및 벤치마크
+
+같은 라운드에서 이 드라이버를 다른 .NET ADO.NET Presto/Trino 드라이버와 원시 HTTP v1 기준선과 비교했습니다. 동일 프로세스, 동일 SQL, 시나리오별 3회 중앙값으로 Trino 476과 PrestoDB 0.300에서 각각 실행했습니다.
+
+| 항목 | 결과 |
+|------|------|
+| 쿼리 지연 | ADO 그룹의 모든 쿼리 시나리오에서 가장 낮거나 동일합니다. 연결과 첫 쿼리부터 15,000행 스캔, 16열 와이드 테이블까지 포함하며 스캔에서 차이가 가장 큽니다 |
+| 관리 할당 | 모든 시나리오에서 가장 낮고 원시 HTTP 기준선보다 적으며, 가장 빠른 경쟁사의 9%–52%입니다 |
+| 8방향 동시성 | 원시 HTTP 기준선과 같거나 약간 낮습니다. Trino에서는 가장 빠른 경쟁사보다 약간 낮고 PrestoDB에서는 약간 높습니다 |
+| 환경 | 로컬 루프백, 평문, 인증 없음. 순위는 라운드마다 안정적이며 절대값은 20%–80% 변동합니다 |
+
+이 수치는 단일 환경에서 직접 측정한 값입니다. 전체 표와 방법, 재현 절차는 [性能测试](Doc/性能测试.md), 패키지 버전과 기능 매트릭스는 [竞品分析](Doc/竞品分析.md)를 참조하세요.
+
+**균형과 한계**
+
+- 트랜잭션, DDL, IDENTITY 열, 저장 프로시저는 드라이버 범위 밖입니다. EF Core와 EF6 Provider는 읽기 전용이라 쓰기와 마이그레이션을 명시적으로 거부합니다.
+- Spooling은 비압축 JSON 세그먼트만 지원하고 다른 인코딩은 직접 프로토콜로 폴백합니다.
+- UTF-8 스트리밍 구문 분석은 `net6.0+`에서만 동작합니다. `net45`, `net461`, `netstandard2.x`는 사전 경로를 사용해 할당이 더 많습니다.
+- 아직 벤치마크하지 않음: AOT 게시 후 처리량, 64KB를 넘는 셀, 실제 JWT/OAuth2 게이트웨이.
+- 범위는 ADO.NET과 읽기 전용 EF Provider이며 SDK 스타일 쿼리 API는 제공하지 않습니다.
+
 ## 주요 기능
 
 <details>
@@ -86,14 +107,14 @@ DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
 | 연결 문자열 별칭 | `Host`/`Server`/`Data Source`, `Catalog`/`Database`, `Schema`/`Owner`, XCode 형식 지원 |
 | PrestoDB / Trino 헤더 | 기본 `Protocol=Presto`; Trino 351+는 `Protocol=Trino` 또는 `TrinoHeaders=true` |
 | 세션 컨텍스트 | Catalog, Schema, 사용자, 소스, 표준 시간대, 세션 속성, 사용자 지정 헤더 |
-| 인증 | Basic, JWT/Bearer, 게이트웨이 사용자 지정 헤더. 비밀 정보는 로그에 남기지 않음 |
+| 인증 | Basic, JWT/Bearer, OAuth2 클라이언트 자격 증명, 사용자 지정 게이트웨이 헤더. 비밀 정보는 로그에 남기지 않음 |
 | TLS와 프록시 | 기본적으로 인증서를 엄격히 검증하며 사설 CA는 명시적으로 완화 |
 | 공유 HTTP 전송 | 엔드포인트별 `HttpClient` 재사용, 프록시, 압축, 시간 제한 지원 |
 
 </details>
 
 <details>
-<summary><b>쿼리와 형식</b> (6개)</summary>
+<summary><b>쿼리와 형식</b> (8개)</summary>
 
 | 기능 | 제공 가치 |
 |------|----------|
@@ -102,7 +123,9 @@ DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
 | 일시 오류 재시도 | 429/502/503/504를 `Retry-After` 또는 지수 백오프로 재시도 |
 | `@name` 매개 변수 | 문자열, 식별자, 주석을 건너뛰는 클라이언트 측 대체 |
 | 형식 정확성 | 부울, 정수, decimal, 날짜/시간, timestamp with time zone, UUID, IP, 이진 |
-| 복합 형식 | v1에서는 `array`/`map`/`row`/`json`을 원시 문자열로 반환 |
+| 복합 형식 | `array`/`map`/`row`는 기본적으로 원시 문자열이며 `ComplexTypes=Structured`이면 `object[]`와 사전을 반환 |
+| `DbBatch`(.NET 6+) | 일괄 명령을 순차 제출하고 영향받은 행 수를 합산하며 취소를 전체 일괄 처리에 전파 |
+| Spooling(Trino 466+) | `Spooling=true`이면 비압축 JSON 세그먼트를 요청하고 개체 스토리지에서 내려받아 확인 |
 
 </details>
 
@@ -114,7 +137,7 @@ DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
 | `GetSchema` | `MetaDataCollections`, `Tables`, `Columns`, `DataTypes` |
 | XCode 통합 | 기본 드라이버 전환과 이전 드라이버 대체. 트랜잭션, DDL, 자동 증가는 지원하지 않음 |
 | 다국어 | 33개 런타임 언어. 컴파일 시 생성되며 AOT에서도 사용 가능 |
-| 진단 | 예외와 로그에 쿼리 ID, 오류 코드, SQLState, 소요 시간 유지 |
+| 진단 | 예외와 로그에 쿼리 ID, 오류 코드, SQLState, 소요 시간을 유지하고 읽기 전용 쿼리/노드 진단 API를 제공 |
 | OpenTelemetry | 최신 프레임워크에서 `ActivitySource("NewLife.Presto")` 제공 |
 | 패키징 | 강력한 이름, SourceLink, 기호 패키지, README.nuget.md |
 
@@ -146,6 +169,7 @@ DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
 - [功能清单](Doc/功能清单.md) — 구현/테스트/주석 상태
 - [架构设计](Doc/架构设计.md) — 구성 요소, 프로토콜 흐름, 형식 매핑, 설계 결정
 - [竞品分析](Doc/竞品分析.md) — 참조 구현, 기능 매트릭스, 격차
+- [性能测试](Doc/性能测试.md) — ADO 경쟁 제품 및 원시 HTTP 기준선과의 동일 라운드 벤치마크
 
 ## 기여
 

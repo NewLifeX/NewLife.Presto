@@ -17,9 +17,9 @@
 
 **NewLife.Presto** es un controlador ADO.NET en C# puro para PrestoDB y Trino del equipo NewLife. Usa el protocolo cliente HTTP REST v1 oficial, depende solo de `NewLife.Core` con **cero dependencias de terceros**, incluye **33 idiomas de ejecución**, es compatible con `net45` a `net11` y está **listo para NativeAOT** en `net8.0+`. PrestoDB y Trino comparten un paquete; `Protocol=Trino` (o `TrinoHeaders=true`) cambia los encabezados de solicitud.
 
-> **Estado del proyecto**: implementado y probado — controlador ADO.NET principal más proveedores EF Core y EF6 de solo lectura, entregados como tres paquetes NuGet por el mismo flujo de publicación. Pasan 503 pruebas unitarias del núcleo, las de los proveedores EF y la integración real con Trino/PrestoDB; Spooling cubre segmentos JSON sin comprimir y, en otro caso, vuelve al protocolo directo. Ver la [lista de funciones](Doc/功能清单.md).
+> **Estado del proyecto**: implementado y probado — controlador ADO.NET principal más proveedores EF Core y EF6 de solo lectura, entregados como tres paquetes NuGet por el mismo flujo de publicación. Pasan 561 pruebas unitarias del núcleo, las de los proveedores EF y la integración real con Trino/PrestoDB; Spooling cubre segmentos JSON sin comprimir y, en otro caso, vuelve al protocolo directo. Ver la [lista de funciones](Doc/功能清单.md).
 
-**Contenido**: [Inicio rápido](#inicio-rápido) · [Por qué NewLife.Presto](#por-qué-newlifepresto) · [Funciones principales](#funciones-principales) · [Compatibilidad de plataformas](#compatibilidad-de-plataformas) · [Localización](#localización) · [Documentación](#documentación) · [Contribuir](#contribuir) · [Mapa del ecosistema](#mapa-del-ecosistema) · [Equipo](#equipo) · [Licencia](#licencia)
+**Contenido**: [Inicio rápido](#inicio-rápido) · [Por qué NewLife.Presto](#por-qué-newlifepresto) · [Comparación y benchmarks](#comparación-y-benchmarks) · [Funciones principales](#funciones-principales) · [Compatibilidad de plataformas](#compatibilidad-de-plataformas) · [Localización](#localización) · [Documentación](#documentación) · [Contribuir](#contribuir) · [Mapa del ecosistema](#mapa-del-ecosistema) · [Equipo](#equipo) · [Licencia](#licencia)
 
 ---
 
@@ -76,6 +76,27 @@ DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
 - **33 idiomas de ejecución**: excepciones, registros y metadatos del controlador localizados, con inglés como origen y respaldo.
 - **Listo para NativeAOT**: sin reflexión en tiempo de ejecución en los códecs de protocolo o tipos; prueba AOT en cada plataforma compatible.
 
+## Comparación y benchmarks
+
+En la misma ronda de pruebas comparamos este controlador con los demás controladores .NET ADO.NET de Presto/Trino y con una línea base HTTP v1 sin abstracción: un proceso, el mismo SQL, mediana de tres ejecuciones, sobre Trino 476 y PrestoDB 0.300.
+
+| Aspecto | Resultado |
+|---------|-----------|
+| Latencia de consulta | La más baja o empatada del grupo ADO en todos los escenarios de consulta, desde la conexión y la primera consulta hasta el escaneo de 15.000 filas y la tabla ancha de 16 columnas, con la mayor ventaja en los escaneos |
+| Asignación administrada | La más baja en todos los escenarios y por debajo de la línea base HTTP: 9%–52% del competidor más rápido |
+| Concurrencia de 8 vías | Al nivel o algo por debajo de la línea base HTTP; algo por debajo del competidor más rápido en Trino y algo por encima en PrestoDB |
+| Entorno | Bucle local, texto plano, sin autenticación; el orden se mantiene entre rondas y los valores absolutos varían un 20%–80% |
+
+Son mediciones propias de un solo entorno. Las tablas completas, el método y la reproducción están en [性能测试](Doc/性能测试.md); las versiones de paquetes y la matriz de capacidades, en [竞品分析](Doc/竞品分析.md).
+
+**Compromisos y límites**
+
+- Las transacciones, el DDL, las columnas de identidad y los procedimientos almacenados quedan fuera del alcance del controlador; los proveedores EF Core y EF6 son de solo lectura y rechazan escrituras y migraciones.
+- El spooling solo cubre segmentos JSON sin comprimir; otras codificaciones vuelven al protocolo directo.
+- El análisis de flujo UTF-8 solo existe en `net6.0+`; `net45`, `net461` y `netstandard2.x` usan la ruta de diccionario y asignan más.
+- Aún fuera de la prueba: rendimiento tras publicar con AOT, celdas de más de 64 KB y pasarelas JWT/OAuth2 reales.
+- El alcance es ADO.NET y proveedores EF de solo lectura; no hay una API de consulta estilo SDK.
+
 ## Funciones principales
 
 <details>
@@ -86,14 +107,14 @@ DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
 | Alias de cadena de conexión | `Host`/`Server`/`Data Source`, `Catalog`/`Database`, `Schema`/`Owner` y sintaxis de XCode |
 | Encabezados PrestoDB / Trino | `Protocol=Presto` por defecto; `Protocol=Trino` o `TrinoHeaders=true` para Trino 351+ |
 | Contexto de sesión | Catalog, esquema, usuario, origen, zona horaria, propiedades de sesión y encabezados personalizados |
-| Autenticación | Basic, JWT/Bearer y encabezados de puerta de enlace personalizados, sin secretos en los registros |
+| Autenticación | Basic, JWT/Bearer, credenciales de cliente OAuth2 y encabezados de puerta de enlace personalizados, sin secretos en los registros |
 | TLS y proxies | Validación estricta de certificados por defecto; excepción explícita para CA privadas |
 | Transporte HTTP compartido | Reutiliza `HttpClient` por punto de conexión, con proxy, compresión y tiempos de espera |
 
 </details>
 
 <details>
-<summary><b>Consultas y tipos</b> (6 elementos)</summary>
+<summary><b>Consultas y tipos</b> (8 elementos)</summary>
 
 | Función | Valor |
 |---------|-------|
@@ -102,7 +123,9 @@ DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
 | Reintento transitorio | 429/502/503/504 con `Retry-After` o retroceso exponencial |
 | Parámetros `@name` | Sustitución en el cliente que omite cadenas, identificadores y comentarios |
 | Fidelidad de tipos | Booleano, entero, decimal, fecha/hora, timestamp with time zone, UUID, IP y binario |
-| Tipos complejos | `array`/`map`/`row`/`json` se devuelven como cadenas sin formato en v1 |
+| Tipos complejos | `array`/`map`/`row` devuelven cadenas sin formato por defecto; `ComplexTypes=Structured` devuelve `object[]` y diccionarios |
+| `DbBatch` (.NET 6+) | Comandos por lotes secuenciales, filas afectadas sumadas y cancelación propagada al lote completo |
+| Spooling (Trino 466+) | `Spooling=true` solicita segmentos JSON sin comprimir, los descarga del almacenamiento de objetos y los confirma |
 
 </details>
 
@@ -114,7 +137,7 @@ DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
 | `GetSchema` | `MetaDataCollections`, `Tables`, `Columns`, `DataTypes` |
 | Integración con XCode | Cambio al controlador predeterminado con respaldo al anterior; sin promesas de transacción, DDL o autoincremento |
 | Localización | 33 idiomas de ejecución, generados en tiempo de compilación y compatibles con AOT |
-| Diagnóstico | ID de consulta, código de error, SQLState y duración conservados en excepciones y registros |
+| Diagnóstico | ID de consulta, código de error, SQLState y duración conservados en excepciones y registros; API de diagnóstico de consultas y nodos de solo lectura |
 | OpenTelemetry | `ActivitySource("NewLife.Presto")` en frameworks modernos |
 | Empaquetado | Nombre fuerte, SourceLink, paquete de símbolos y README.nuget.md |
 
@@ -146,6 +169,7 @@ DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
 - [功能清单](Doc/功能清单.md) — estado de implementación/pruebas/comentarios
 - [架构设计](Doc/架构设计.md) — componentes, flujo del protocolo, asignación de tipos, decisiones
 - [竞品分析](Doc/竞品分析.md) — proyectos de referencia, matriz de funciones, brechas
+- [性能测试](Doc/性能测试.md) — benchmark de la misma ronda frente a competidores ADO y una línea base HTTP
 
 ## Contribuir
 

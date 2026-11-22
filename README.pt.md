@@ -17,9 +17,9 @@
 
 **NewLife.Presto** é um driver ADO.NET em C# puro para PrestoDB e Trino da equipe NewLife. Ele usa o protocolo cliente HTTP REST v1 oficial, depende apenas de `NewLife.Core` com **zero dependências de terceiros**, inclui **33 idiomas de execução**, oferece suporte de `net45` a `net11` e está **pronto para NativeAOT** em `net8.0+`. PrestoDB e Trino compartilham um único pacote; `Protocol=Trino` (ou `TrinoHeaders=true`) alterna os cabeçalhos de solicitação.
 
-> **Estado do projeto**: implementado e testado — driver ADO.NET principal mais provedores EF Core e EF6 somente leitura, entregues como três pacotes NuGet pelo mesmo pipeline de publicação. 503 testes unitários do núcleo, testes dos provedores EF e integração real com Trino/PrestoDB passam; o Spooling cobre segmentos JSON não compactados e, caso contrário, recorre ao protocolo direto. Ver a [lista de funções](Doc/功能清单.md).
+> **Estado do projeto**: implementado e testado — driver ADO.NET principal mais provedores EF Core e EF6 somente leitura, entregues como três pacotes NuGet pelo mesmo pipeline de publicação. 561 testes unitários do núcleo, testes dos provedores EF e integração real com Trino/PrestoDB passam; o Spooling cobre segmentos JSON não compactados e, caso contrário, recorre ao protocolo direto. Ver a [lista de funções](Doc/功能清单.md).
 
-**Conteúdo**: [Início rápido](#início-rápido) · [Por que NewLife.Presto](#por-que-newlifepresto) · [Principais recursos](#principais-recursos) · [Suporte de plataformas](#suporte-de-plataformas) · [Localização](#localização) · [Documentação](#documentação) · [Contribuição](#contribuição) · [Mapa do ecossistema](#mapa-do-ecossistema) · [Equipe](#equipe) · [Licença](#licença)
+**Conteúdo**: [Início rápido](#início-rápido) · [Por que NewLife.Presto](#por-que-newlifepresto) · [Comparação e benchmarks](#comparação-e-benchmarks) · [Principais recursos](#principais-recursos) · [Suporte de plataformas](#suporte-de-plataformas) · [Localização](#localização) · [Documentação](#documentação) · [Contribuição](#contribuição) · [Mapa do ecossistema](#mapa-do-ecossistema) · [Equipe](#equipe) · [Licença](#licença)
 
 ---
 
@@ -76,6 +76,27 @@ DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
 - **33 idiomas de execução**: exceções, logs e metadados do driver localizados, com inglês como origem e fallback.
 - **Pronto para NativeAOT**: sem reflexão em tempo de execução nos codecs de protocolo ou tipos; teste AOT em cada plataforma suportada.
 
+## Comparação e benchmarks
+
+Na mesma rodada de medições, comparamos este driver com os demais drivers .NET ADO.NET de Presto/Trino e com uma linha de base HTTP v1 sem abstração: um processo, o mesmo SQL, mediana de três execuções, em Trino 476 e PrestoDB 0.300.
+
+| Aspecto | Resultado |
+|---------|-----------|
+| Latência de consulta | A menor ou empatada do grupo ADO em todos os cenários de consulta, da conexão mais primeira consulta até a varredura de 15.000 linhas e a tabela larga de 16 colunas, com a maior vantagem nas varreduras |
+| Alocação gerenciada | A menor em todos os cenários e abaixo da linha de base HTTP: 9%–52% do concorrente mais rápido |
+| Concorrência de 8 vias | No nível ou um pouco abaixo da linha de base HTTP; um pouco abaixo do concorrente mais rápido no Trino e um pouco acima no PrestoDB |
+| Ambiente | Loopback local, texto simples, sem autenticação; a ordem se mantém entre rodadas e os valores absolutos variam 20%–80% |
+
+São medições próprias de um único ambiente. Tabelas completas, método e reprodução estão em [性能测试](Doc/性能测试.md); versões dos pacotes e a matriz de recursos, em [竞品分析](Doc/竞品分析.md).
+
+**Trade-offs e limites**
+
+- Transações, DDL, colunas de identidade e procedimentos armazenados ficam fora do escopo do driver; os provedores EF Core e EF6 são somente leitura e recusam gravações e migrações.
+- O spooling cobre apenas segmentos JSON sem compressão; outras codificações voltam ao protocolo direto.
+- A análise de fluxo UTF-8 existe apenas em `net6.0+`; `net45`, `net461` e `netstandard2.x` usam o caminho de dicionário e alocam mais.
+- Ainda fora do benchmark: throughput após publicação AOT, células acima de 64 KB e gateways JWT/OAuth2 reais.
+- O escopo é ADO.NET e provedores EF somente leitura; não há API de consulta no estilo SDK.
+
 ## Principais recursos
 
 <details>
@@ -86,14 +107,14 @@ DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
 | Aliases de string de conexão | `Host`/`Server`/`Data Source`, `Catalog`/`Database`, `Schema`/`Owner` e sintaxe XCode |
 | Cabeçalhos PrestoDB / Trino | `Protocol=Presto` por padrão; `Protocol=Trino` ou `TrinoHeaders=true` para Trino 351+ |
 | Contexto de sessão | Catalog, schema, usuário, origem, fuso horário, propriedades de sessão e cabeçalhos personalizados |
-| Autenticação | Basic, JWT/Bearer e cabeçalhos de gateway personalizados, sem segredos nos logs |
+| Autenticação | Basic, JWT/Bearer, credenciais de cliente OAuth2 e cabeçalhos de gateway personalizados, sem segredos nos logs |
 | TLS e proxies | Validação estrita de certificados por padrão; exceção explícita para CAs privadas |
 | Transporte HTTP compartilhado | Reutiliza `HttpClient` por endpoint, com proxy, compactação e tempos limite |
 
 </details>
 
 <details>
-<summary><b>Consultas e tipos</b> (6 itens)</summary>
+<summary><b>Consultas e tipos</b> (8 itens)</summary>
 
 | Recurso | O que oferece |
 |---------|---------------|
@@ -102,7 +123,9 @@ DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
 | Repetição transitória | 429/502/503/504 com `Retry-After` ou backoff exponencial |
 | Parâmetros `@name` | Substituição no cliente que ignora strings, identificadores e comentários |
 | Fidelidade de tipos | Booleano, inteiro, decimal, data/hora, timestamp with time zone, UUID, IP e binário |
-| Tipos complexos | `array`/`map`/`row`/`json` retornam como strings brutas na v1 |
+| Tipos complexos | `array`/`map`/`row` retornam strings brutas por padrão; `ComplexTypes=Structured` retorna `object[]` e dicionários |
+| `DbBatch` (.NET 6+) | Comandos em lote sequenciais, linhas afetadas somadas e cancelamento propagado para o lote inteiro |
+| Spooling (Trino 466+) | `Spooling=true` solicita segmentos JSON sem compressão, baixa do armazenamento de objetos e confirma |
 
 </details>
 
@@ -114,7 +137,7 @@ DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
 | `GetSchema` | `MetaDataCollections`, `Tables`, `Columns`, `DataTypes` |
 | Integração com XCode | Troca para o driver padrão com fallback para o anterior; sem promessas de transação, DDL ou auto-incremento |
 | Localização | 33 idiomas de execução, gerados em tempo de compilação e compatíveis com AOT |
-| Diagnóstico | ID da consulta, código de erro, SQLState e duração preservados em exceções e logs |
+| Diagnóstico | ID da consulta, código de erro, SQLState e duração preservados em exceções e logs; API de diagnóstico de consultas e nós somente leitura |
 | OpenTelemetry | `ActivitySource("NewLife.Presto")` em frameworks modernos |
 | Empacotamento | Nome forte, SourceLink, pacote de símbolos e README.nuget.md |
 
@@ -146,6 +169,7 @@ DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
 - [功能清单](Doc/功能清单.md) — status de implementação/testes/comentários
 - [架构设计](Doc/架构设计.md) — componentes, fluxo do protocolo, mapeamento de tipos, decisões
 - [竞品分析](Doc/竞品分析.md) — projetos de referência, matriz de recursos, lacunas
+- [性能测试](Doc/性能测试.md) — benchmark da mesma rodada contra concorrentes ADO e uma linha de base HTTP
 
 ## Contribuição
 

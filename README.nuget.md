@@ -21,7 +21,7 @@
 
 > **Project status**: implemented and tested — core ADO.NET driver plus read-only EF Core and EF6 providers, built as three NuGet packages shipped by one release pipeline. 561 core unit tests, EF provider tests and real Trino/PrestoDB integration pass; spooling covers uncompressed JSON segments and falls back to the direct protocol otherwise. See [Doc/功能清单.md](https://github.com/NewLifeX/NewLife.Presto/blob/master/Doc/功能清单.md).
 
-**Contents**: [Quick Start](#quick-start) · [Why NewLife.Presto](#why-newlifepresto) · [Main Features](#main-features) · [Platform Support](#platform-support) · [Localization](#localization) · [Documentation](#documentation) · [Contributing](#contributing) · [Ecosystem Map](#ecosystem-map) · [Team](#team) · [License](#license)
+**Contents**: [Quick Start](#quick-start) · [Why NewLife.Presto](#why-newlifepresto) · [Comparison & Benchmarks](#comparison--benchmarks) · [Main Features](#main-features) · [Platform Support](#platform-support) · [Localization](#localization) · [Documentation](#documentation) · [Contributing](#contributing) · [Ecosystem Map](#ecosystem-map) · [Team](#team) · [License](#license)
 
 ---
 
@@ -77,6 +77,27 @@ DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
 - **Full framework and platform coverage**: `net45` ~ `net11`, Windows / Linux / macOS, x64 / arm64, plus observational LoongArch64 and musl builds.
 - **33 runtime languages**: exceptions, logs and driver metadata are localized, with English as the source and fallback.
 - **NativeAOT ready**: no runtime reflection in protocol or type codecs; NativeAOT smoke runs on every supported platform.
+
+## Comparison & Benchmarks
+
+We ran this driver next to the other .NET ADO.NET Presto/Trino drivers and a raw HTTP v1 baseline in the same round: one process, identical SQL, median of three runs, against both Trino 476 and PrestoDB 0.300.
+
+| Aspect | Finding |
+|--------|---------|
+| Query latency | Lowest or tied in the ADO group in every query scenario, from connect plus first query to 15,000-row scans and 16-column wide tables, with the largest gains on scans |
+| Managed allocation | Lowest in every scenario and below the raw HTTP baseline: 9%–52% of the fastest competitor |
+| 8-way concurrency | At or slightly below the raw HTTP baseline; slightly below the fastest competitor on Trino and slightly above it on PrestoDB |
+| Environment | Local loopback, plaintext, no authentication; rankings are stable across rounds while absolute values vary by 20%–80% |
+
+These are our own measurements from a single environment. Full tables, method and reproduction steps are in [性能测试](https://github.com/NewLifeX/NewLife.Presto/blob/master/Doc/性能测试.md); package versions and the per-feature matrix are in [竞品分析](https://github.com/NewLifeX/NewLife.Presto/blob/master/Doc/竞品分析.md).
+
+**Trade-offs and limits**
+
+- Transactions, DDL, identity columns and stored procedures are out of scope for the driver; the EF Core and EF6 providers are read-only and reject writes and migrations.
+- Spooling covers uncompressed JSON segments only; other encodings fall back to the direct protocol.
+- UTF-8 streaming parsing requires `net6.0+`; `net45`, `net461` and `netstandard2.x` use the dictionary path and allocate more.
+- Not yet benchmarked: AOT-published throughput, cells over 64 KB, and live JWT/OAuth2 gateways.
+- Scope is ADO.NET plus read-only EF providers; there is no SDK-style query API.
 
 ## Main Features
 

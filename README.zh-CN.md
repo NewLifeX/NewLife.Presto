@@ -17,9 +17,9 @@
 
 **NewLife.Presto** 是新生命开发团队出品的纯 C# PrestoDB / Trino ADO.NET 驱动。它使用官方 HTTP REST v1 客户端协议，仅依赖 `NewLife.Core`，**零第三方依赖**，内置 **33 种运行时语言**，目标框架覆盖 `net45` ~ `net11`，`net8.0+` **支持 NativeAOT**。PrestoDB 与 Trino 共用一个包，通过 `Protocol=Trino`（或 `TrinoHeaders=true`）切换请求头。
 
-> **项目状态**：已实现并通过测试——核心 ADO.NET 驱动 + 只读的 EF Core 与 EF6 Provider，构建为三个 NuGet 包并由同一发布流程打包推送。503 项核心单测、EF Provider 测试与真实 Trino/PrestoDB 集成全部通过；Spooling 覆盖未压缩 JSON 分段，其余编码自动回退直接协议。见[功能清单](Doc/功能清单.md)。
+> **项目状态**：已实现并通过测试——核心 ADO.NET 驱动 + 只读的 EF Core 与 EF6 Provider，构建为三个 NuGet 包并由同一发布流程打包推送。561 项核心单测、EF Provider 测试与真实 Trino/PrestoDB 集成全部通过；Spooling 覆盖未压缩 JSON 分段，其余编码自动回退直接协议。见[功能清单](Doc/功能清单.md)。
 
-**目录**: [快速开始](#快速开始) · [为什么选择 NewLife.Presto](#为什么选择-newlifepresto) · [主要功能](#主要功能) · [平台支持](#平台支持) · [多语言](#多语言) · [文档](#文档) · [参与贡献](#参与贡献) · [生态版图](#生态版图) · [新生命开发团队](#新生命开发团队) · [许可证](#许可证)
+**目录**: [快速开始](#快速开始) · [为什么选择 NewLife.Presto](#为什么选择-newlifepresto) · [对比与基准](#对比与基准) · [主要功能](#主要功能) · [平台支持](#平台支持) · [多语言](#多语言) · [文档](#文档) · [参与贡献](#参与贡献) · [生态版图](#生态版图) · [新生命开发团队](#新生命开发团队) · [许可证](#许可证)
 
 ---
 
@@ -76,6 +76,27 @@ DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
 - **33 种运行时语言**：异常、日志与驱动元数据均已本地化，英文为源文与兜底。
 - **NativeAOT 就绪**：协议与类型编解码不使用运行时反射；各支持平台均运行 NativeAOT 冒烟。
 
+## 对比与基准
+
+我们在同一轮基准中，把本驱动与其他 .NET ADO.NET Presto/Trino 驱动、原始 HTTP v1 基线放在一起对比：同一进程、相同 SQL、每个场景 3 轮取中位，Trino 476 与 PrestoDB 0.300 各跑一遍。
+
+| 维度 | 结果 |
+|------|------|
+| 查询耗时 | ADO 组内全部查询场景耗时最低或持平，从建连首查到 1.5 万行扫描与 16 列宽表，扫描类差距最大 |
+| 托管分配 | 全部场景最低，且低于原始 HTTP 基线：为最快竞品的 9%–52% |
+| 8 并发 | 与原始 HTTP 基线持平或略低；Trino 上略低于最快竞品，PrestoDB 上略高 |
+| 测试环境 | 本机回环、明文、无认证；多轮排序稳定，绝对值轮间波动 20%–80% |
+
+以上是本项目在单一环境下的实测。完整数据、方法与复现命令见[性能测试](Doc/性能测试.md)，第三方客户端版本与逐项能力矩阵见[竞品分析](Doc/竞品分析.md)。
+
+**取舍与边界**
+
+- 驱动不提供事务、DDL、自增列与存储过程；EF Core 与 EF6 Provider 只读，写入与迁移会被明确拒绝。
+- Spooling 仅支持未压缩 JSON 分段，其他编码回退直接协议。
+- UTF-8 流式解析只在 `net6.0+` 生效；`net45`、`net461`、`netstandard2.x` 走字典路径，分配更高。
+- 尚未纳入基准：AOT 发布后的吞吐、单格超过 64 KB 的超长字符串、真实 JWT/OAuth2 网关。
+- 定位是 ADO.NET 与只读 EF Provider，不提供 SDK 风格的查询 API。
+
 ## 主要功能
 
 <details>
@@ -93,7 +114,7 @@ DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
 </details>
 
 <details>
-<summary><b>查询与类型</b>（7 项）</summary>
+<summary><b>查询与类型</b>（8 项）</summary>
 
 | 功能点 | 一句话特点 |
 |--------|------------|
@@ -104,6 +125,7 @@ DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
 | 类型保真 | 布尔、整数、decimal、日期时间、timestamp with time zone、UUID、IP 与二进制 |
 | 复杂类型 | `array`/`map`/`row` 默认原始字符串；`ComplexTypes=Structured` 返回 `object[]` 与字典 |
 | `DbBatch`（.NET 6+） | 批量命令顺序提交，汇总受影响行数，取消传播到整批 |
+| Spooling（Trino 466+） | `Spooling=true` 请求未压缩 JSON 分段，从对象存储下载并确认 |
 
 </details>
 
@@ -147,6 +169,7 @@ DbConfiguration.SetConfiguration(new PrestoEFConfiguration());
 - [功能清单](Doc/功能清单.md) — 实现/测试/注释三维状态
 - [架构设计](Doc/架构设计.md) — 组件、协议流程、类型映射与设计决策
 - [竞品分析](Doc/竞品分析.md) — 参考实现、功能矩阵与差距
+- [性能测试](Doc/性能测试.md) — 与 ADO 竞品及原始 HTTP 基线的同轮基准
 
 ## 参与贡献
 
