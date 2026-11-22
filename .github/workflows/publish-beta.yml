@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      # 首选仓库密钥；未配置时退回 OIDC 受信发布
+      # OIDC 受信发布优先；登录失败时才退回仓库密钥
       NUGET_KEY: ${{ secrets.nugetKey }}
 
     steps:
@@ -106,16 +106,21 @@ jobs:
         dotnet nuget push ./out/*.nupkg --skip-duplicate --source https://nuget.pkg.github.com/NewLifeX/index.json --api-key ${{ github.token }}
     - name: NuGet login (OIDC)
       id: nuget-login
-      # 已配置 nugetKey 时跳过，避免不必要的 401 噪声
-      if: env.NUGET_KEY == ''
+      # 始终先换取短期密钥；失败不中断，由后续步骤退回 nugetKey
       continue-on-error: true
       uses: NuGet/login@v1
       with:
         user: BigStone
+    - name: Verify NuGet credential
+      # OIDC 与仓库密钥都没有时提前失败，避免带着空密钥去推送
+      if: steps.nuget-login.outputs.NUGET_API_KEY == '' && env.NUGET_KEY == ''
+      run: |
+        echo "::error::未获得 NuGet 凭据：OIDC 登录失败，且仓库未配置 nugetKey"
+        exit 1
     - name: Publish to NuGet.org
       id: nuget
       env:
-        NUGET_API_KEY: ${{ env.NUGET_KEY || steps.nuget-login.outputs.NUGET_API_KEY }}
+        NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY || env.NUGET_KEY }}
       run: |
         set -o pipefail
         dotnet nuget push ./out/*.nupkg --skip-duplicate --source https://api.nuget.org/v3/index.json --api-key "$NUGET_API_KEY" 2>&1 | tee /tmp/nuget-push.log
@@ -132,6 +137,7 @@ jobs:
           '打包'            = '${{ steps.pack.outcome }}'
           '包消费冒烟'      = '${{ steps.consumer.outcome }}'
           'GitHub Packages' = '${{ steps.ghpackages.outcome }}'
+          'NuGet OIDC'      = '${{ steps.nuget-login.outcome }}'
           'NuGet.org'       = '${{ steps.nuget.outcome }}'
         }
         $marks = @{ success = '✅'; failure = '⚠️'; skipped = '⏭'; cancelled = '⛔' }
