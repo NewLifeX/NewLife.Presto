@@ -674,7 +674,13 @@ internal static class PrestoValueConverter
                 if (fieldType == typeof(SByte)) return checked((SByte)int64);
             }
 
-            if (fieldType == typeof(String)) return PrestoJson.ToText(value)!;
+            if (fieldType == typeof(String))
+            {
+                // 复杂列要 JSON 文本：net6+ 解析阶段就是原始切片，旧目标的字典路径留下对象树，这里补成文本
+                if (value is not String && PrestoTypeMapper.IsComplex(column.Type)) return PrestoJson.WriteJson(value);
+
+                return PrestoJson.ToText(value)!;
+            }
             if (fieldType == typeof(Boolean)) return ToBoolean(value);
             if (fieldType == typeof(SByte)) return System.Convert.ToSByte(PrestoJson.ToText(value)!, CultureInfo.InvariantCulture);
             if (fieldType == typeof(Int16)) return System.Convert.ToInt16(PrestoJson.ToText(value), CultureInfo.InvariantCulture);

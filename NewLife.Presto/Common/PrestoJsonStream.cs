@@ -64,7 +64,7 @@ internal static partial class PrestoJson
             if (!reader.Read() || reader.TokenType != JsonTokenType.StartArray)
                 throw new JsonException("expected a JSON array of rows");
 
-            return ReadData(ref reader, null, CountArrayItems(utf8, (Int32)reader.TokenStartIndex));
+            return ReadData(ref reader, null, utf8, CountArrayItems(utf8, (Int32)reader.TokenStartIndex));
         }
         catch (Exception ex) when (ex is not PrestoException)
         {
@@ -135,7 +135,7 @@ internal static partial class PrestoJson
                 reader.Read();
                 if (reader.TokenType == JsonTokenType.StartArray)
                 {
-                    var page = ReadPageData(ref reader, columns, CountArrayItems(utf8, (Int32)reader.TokenStartIndex));
+                    var page = ReadPageData(ref reader, columns, utf8, CountArrayItems(utf8, (Int32)reader.TokenStartIndex));
                     if (page.Cells != null)
                     {
                         cellBuffer = page.Cells;
@@ -476,7 +476,7 @@ internal static partial class PrestoJson
         public IList<IList<Object?>>? Rows;
     }
 
-    private static List<IList<Object?>> ReadData(ref Utf8JsonReader reader, List<PrestoColumn>? columns, Int32 capacity = 0)
+    private static List<IList<Object?>> ReadData(ref Utf8JsonReader reader, List<PrestoColumn>? columns, ReadOnlySpan<Byte> utf8, Int32 capacity = 0)
     {
         var list = capacity > 0 ? new List<IList<Object?>>(capacity) : new List<IList<Object?>>();
 
@@ -486,7 +486,7 @@ internal static partial class PrestoJson
             if (reader.TokenType == JsonTokenType.EndArray) break;
 
             if (reader.TokenType == JsonTokenType.StartArray)
-                list.Add(ReadRow(ref reader, columns, arity));
+                list.Add(ReadRow(ref reader, columns, utf8, arity));
             else
             {
                 // 非数组行按空行处理，与字典路径一致
@@ -498,17 +498,17 @@ internal static partial class PrestoJson
         return list;
     }
 
-    private static PageData ReadPageData(ref Utf8JsonReader reader, List<PrestoColumn>? columns, Int32 capacity)
+    private static PageData ReadPageData(ref Utf8JsonReader reader, List<PrestoColumn>? columns, ReadOnlySpan<Byte> utf8, Int32 capacity)
     {
         var arity = columns?.Count ?? 0;
 
         // 单页单元格总量较小时用一整块数组存放，省掉每行一个对象数组的开销；超限退回行列表，避免大对象堆
-        if (arity > 0 && capacity > 0 && capacity <= MaxFlatCells / arity) return ReadFlatData(ref reader, columns, arity, capacity);
+        if (arity > 0 && capacity > 0 && capacity <= MaxFlatCells / arity) return ReadFlatData(ref reader, columns, utf8, arity, capacity);
 
-        return new PageData { Rows = ReadData(ref reader, columns, capacity) };
+        return new PageData { Rows = ReadData(ref reader, columns, utf8, capacity) };
     }
 
-    private static PageData ReadFlatData(ref Utf8JsonReader reader, List<PrestoColumn>? columns, Int32 arity, Int32 capacity)
+    private static PageData ReadFlatData(ref Utf8JsonReader reader, List<PrestoColumn>? columns, ReadOnlySpan<Byte> utf8, Int32 arity, Int32 capacity)
     {
         var cells = new Object?[capacity * arity];
         Int32[]? counts = null;
@@ -542,7 +542,7 @@ internal static partial class PrestoJson
                 if (reader.TokenType == JsonTokenType.EndArray) break;
 
                 if (index < arity)
-                    cells[offset + index] = ReadCell(ref reader, columns, index);
+                    cells[offset + index] = ReadCell(ref reader, columns, index, utf8);
                 else
                     SkipValue(ref reader);
 
@@ -586,7 +586,7 @@ internal static partial class PrestoJson
         return counts;
     }
 
-    private static IList<Object?> ReadRow(ref Utf8JsonReader reader, List<PrestoColumn>? columns, Int32 arity)
+    private static IList<Object?> ReadRow(ref Utf8JsonReader reader, List<PrestoColumn>? columns, ReadOnlySpan<Byte> utf8, Int32 arity)
     {
         if (arity <= 0)
         {
@@ -596,7 +596,7 @@ internal static partial class PrestoJson
             {
                 if (reader.TokenType == JsonTokenType.EndArray) break;
 
-                cells.Add(ReadCell(ref reader, columns, index));
+                cells.Add(ReadCell(ref reader, columns, index, utf8));
                 index++;
             }
 
@@ -610,7 +610,7 @@ internal static partial class PrestoJson
             if (reader.TokenType == JsonTokenType.EndArray) break;
 
             if (count < arity)
-                row[count] = ReadCell(ref reader, columns, count);
+                row[count] = ReadCell(ref reader, columns, count, utf8);
             else
                 SkipValue(ref reader);
 
@@ -631,7 +631,7 @@ internal static partial class PrestoJson
         return copy;
     }
 
-    private static Object? ReadCell(ref Utf8JsonReader reader, List<PrestoColumn>? columns, Int32 ordinal)
+    private static Object? ReadCell(ref Utf8JsonReader reader, List<PrestoColumn>? columns, Int32 ordinal, ReadOnlySpan<Byte> utf8)
     {
         var column = ordinal >= 0 && columns != null && ordinal < columns.Count ? columns[ordinal] : null;
 
@@ -642,10 +642,15 @@ internal static partial class PrestoJson
             JsonTokenType.True => _trueValue,
             JsonTokenType.False => _falseValue,
             JsonTokenType.Null => null,
-            JsonTokenType.StartObject => ReadDictionary(ref reader),
-            JsonTokenType.StartArray => ReadList(ref reader), _ => null,
+            // 复杂列在非结构化模式下只需要原始 JSON 文本，直接切片，避免先建对象树再转回字符串
+            JsonTokenType.StartObject => IsComplexText(column) ? GetRawJson(ref reader, utf8) : ReadDictionary(ref reader, utf8),
+            JsonTokenType.StartArray => IsComplexText(column) ? GetRawJson(ref reader, utf8) : ReadList(ref reader, utf8), _ => null,
         };
     }
+
+    /// <summary>复杂列且未启用结构化模式：单元格按原始 JSON 文本返回</summary>
+    private static Boolean IsComplexText(PrestoColumn? column)
+        => column != null && column.FieldType == typeof(String) && PrestoTypeMapper.IsComplex(column.Type);
 
     private static Object? ReadString(ref Utf8JsonReader reader, PrestoColumn? column)
     {
@@ -709,7 +714,7 @@ internal static partial class PrestoJson
         return dbl;
     }
 
-    private static Dictionary<String, Object?> ReadDictionary(ref Utf8JsonReader reader)
+    private static Dictionary<String, Object?> ReadDictionary(ref Utf8JsonReader reader, ReadOnlySpan<Byte> utf8)
     {
         var dic = new Dictionary<String, Object?>(StringComparer.Ordinal);
         while (reader.Read())
@@ -718,20 +723,20 @@ internal static partial class PrestoJson
 
             var key = reader.GetString()!;
             reader.Read();
-            dic[key] = ReadCell(ref reader, null, -1);
+            dic[key] = ReadCell(ref reader, null, -1, utf8);
         }
 
         return dic;
     }
 
-    private static List<Object?> ReadList(ref Utf8JsonReader reader)
+    private static List<Object?> ReadList(ref Utf8JsonReader reader, ReadOnlySpan<Byte> utf8)
     {
         var list = new List<Object?>();
         while (reader.Read())
         {
             if (reader.TokenType == JsonTokenType.EndArray) break;
 
-            list.Add(ReadCell(ref reader, null, -1));
+            list.Add(ReadCell(ref reader, null, -1, utf8));
         }
 
         return list;

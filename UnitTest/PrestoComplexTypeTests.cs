@@ -21,6 +21,73 @@ public class PrestoComplexTypeTests
         Assert.Equal("[1, 2, 3]", reader.GetValue(0));
     }
 
+    [Fact(DisplayName = "默认模式下真实数组/映射/行单元格返回原始 JSON 文本")]
+    public void DefaultRawComplexCells()
+    {
+        var cases = new (String Type, String Cell, String Expected)[]
+        {
+            ("array(integer)", "[1, 2, 3]", "[1, 2, 3]"),
+            ("map(varchar, integer)", "{\"a\": 1, \"b\": 2}", "{\"a\": 1, \"b\": 2}"),
+            ("row(name varchar, age integer)", "[\"alice\", 30]", "[\"alice\", 30]"),
+            ("array(map(varchar, integer))", "[{\"a\": 1}, {\"b\": 2}]", "[{\"a\": 1}, {\"b\": 2}]"),
+        };
+
+        foreach (var item in cases)
+        {
+            var handler = new FakePrestoHandler();
+            handler.EnqueueJson(Result(item.Type, item.Cell));
+            var connection = TestHelper.CreateOpenConnection(handler);
+
+            using var command = connection.CreateCommand("select 1");
+            using var reader = command.ExecuteReader();
+            Assert.True(reader.Read());
+            Assert.Equal(typeof(String), reader.GetFieldType(0));
+            Assert.Equal(item.Expected, reader.GetValue(0));
+        }
+    }
+
+    [Fact(DisplayName = "对象树写成 JSON 文本")]
+    public void WriteJsonTree()
+    {
+        Assert.Equal("null", PrestoJson.WriteJson(null));
+        Assert.Equal("\"a\\\"b\\\\c\\n\"", PrestoJson.WriteJson("a\"b\\c\n"));
+        Assert.Equal("\"\\u0001\"", PrestoJson.WriteJson("\u0001"));
+        Assert.Equal("\"\\b\\f\\r\\t\"", PrestoJson.WriteJson("\b\f\r\t"));
+        Assert.Equal("true", PrestoJson.WriteJson(true));
+        Assert.Equal("12.5", PrestoJson.WriteJson(12.5m));
+        Assert.Equal("[1,\"x\",null]", PrestoJson.WriteJson(new List<Object?> { 1, "x", null }));
+        Assert.Equal("{\"a\":[1,2],\"b\":{\"c\":false}}", PrestoJson.WriteJson(new Dictionary<String, Object?>
+        {
+            ["a"] = new List<Object?> { 1, 2 },
+            ["b"] = new Dictionary<String, Object?> { ["c"] = false },
+        }));
+    }
+
+    [Fact(DisplayName = "旧目标对象树在复杂列上还原为 JSON 文本")]
+    public void ComplexTreeConvertedToJson()
+    {
+        var column = new PrestoColumn { Name = "c", Type = "array(integer)", FieldType = typeof(String) };
+
+        Assert.Equal("[1,2]", PrestoValueConverter.Convert(new List<Object?> { 1, 2 }, column));
+        Assert.Equal("[1, 2]", PrestoValueConverter.Convert("[1, 2]", column));
+    }
+
+    [Fact(DisplayName = "结构化模式下真实数组单元格解析为对象数组")]
+    public void StructuredRawArrayCell()
+    {
+        var handler = new FakePrestoHandler();
+        handler.EnqueueJson(Result("array(integer)", "[1, 2, 3]"));
+        var connection = TestHelper.CreateOpenConnection(handler, ";ComplexTypes=Structured");
+
+        using var command = connection.CreateCommand("select array[1,2,3]");
+        using var reader = command.ExecuteReader();
+        Assert.True(reader.Read());
+        Assert.Equal(typeof(Object), reader.GetFieldType(0));
+
+        var values = Assert.IsType<Object[]>(reader.GetValue(0));
+        Assert.Equal(new Object?[] { 1, 2, 3 }, values);
+    }
+
     [Fact(DisplayName = "array 结构化取值")]
     public void ArrayStructured()
     {

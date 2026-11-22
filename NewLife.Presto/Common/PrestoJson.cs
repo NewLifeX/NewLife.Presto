@@ -420,5 +420,84 @@ internal static partial class PrestoJson
 
         return Convert.ToString(value, CultureInfo.InvariantCulture);
     }
+
+    /// <summary>把对象树写成 JSON 文本</summary>
+    /// <remarks>
+    /// 供旧目标（`net45`/`net461`/`netstandard2.x`）使用：这些目标走字典解析路径，
+    /// 复杂列拿到的是列表/字典而不是原始 JSON 片段，需要还原成 JSON 文本。
+    /// </remarks>
+    /// <param name="value">对象树：列表、字典或标量</param>
+    /// <returns>JSON 文本</returns>
+    public static String WriteJson(Object? value)
+    {
+        var sb = new StringBuilder();
+        WriteJson(sb, value);
+
+        return sb.ToString();
+    }
+
+    private static void WriteJson(StringBuilder sb, Object? value)
+    {
+        switch (value)
+        {
+            case null:
+                sb.Append("null");
+                break;
+            case String text:
+                WriteJsonString(sb, text);
+                break;
+            case Boolean flag:
+                sb.Append(flag ? "true" : "false");
+                break;
+            case IDictionary<String, Object?> dic:
+                sb.Append('{');
+                var first = true;
+                foreach (var item in dic)
+                {
+                    if (!first) sb.Append(',');
+                    first = false;
+                    WriteJsonString(sb, item.Key);
+                    sb.Append(':');
+                    WriteJson(sb, item.Value);
+                }
+                sb.Append('}');
+                break;
+            case IList<Object?> list:
+                sb.Append('[');
+                for (var i = 0; i < list.Count; i++)
+                {
+                    if (i > 0) sb.Append(',');
+                    WriteJson(sb, list[i]);
+                }
+                sb.Append(']');
+                break;
+            default:
+                sb.Append(Convert.ToString(value, CultureInfo.InvariantCulture));
+                break;
+        }
+    }
+
+    private static void WriteJsonString(StringBuilder sb, String text)
+    {
+        sb.Append('"');
+        foreach (var ch in text)
+        {
+            switch (ch)
+            {
+                case '"': sb.Append("\\\""); break;
+                case '\\': sb.Append("\\\\"); break;
+                case '\b': sb.Append("\\b"); break;
+                case '\f': sb.Append("\\f"); break;
+                case '\n': sb.Append("\\n"); break;
+                case '\r': sb.Append("\\r"); break;
+                case '\t': sb.Append("\\t"); break;
+                default:
+                    if (ch < ' ') sb.Append("\\u").Append(((Int32)ch).ToString("x4", CultureInfo.InvariantCulture));
+                    else sb.Append(ch);
+                    break;
+            }
+        }
+        sb.Append('"');
+    }
     #endregion
 }
