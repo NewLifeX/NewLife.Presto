@@ -39,9 +39,41 @@ internal sealed class PrestoResponseBody : IDisposable
         if (response?.Content == null) return new PrestoResponseBody();
 
 #if NET6_0_OR_GREATER
-        var (buffer, length) = await ReadBytesAsync(response.Content, cancellationToken).ConfigureAwait(false);
+        // 读取循环直接写在这里，少一层异步状态机（每页都省一次装箱）
+        var content = response.Content;
+        var length = content.Headers.ContentLength;
+        var capacity = length is > 0 and <= Int32.MaxValue ? (Int32)length.Value : 4096;
+        var buffer = ArrayPool<Byte>.Shared.Rent(capacity);
+        var total = 0;
 
-        return new PrestoResponseBody { _buffer = buffer, _length = length };
+        try
+        {
+            using var stream = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            using var gzip = OpenDecompression(content, stream);
+            var source = gzip != null ? gzip : stream;
+            while (true)
+            {
+                if (total == buffer.Length)
+                {
+                    var larger = ArrayPool<Byte>.Shared.Rent(buffer.Length * 2);
+                    Buffer.BlockCopy(buffer, 0, larger, 0, total);
+                    ArrayPool<Byte>.Shared.Return(buffer);
+                    buffer = larger;
+                }
+
+                var read = await source.ReadAsync(buffer.AsMemory(total), cancellationToken).ConfigureAwait(false);
+                if (read <= 0) break;
+
+                total += read;
+            }
+
+            return new PrestoResponseBody { _buffer = buffer, _length = total };
+        }
+        catch
+        {
+            ArrayPool<Byte>.Shared.Return(buffer);
+            throw;
+        }
 #else
         var text = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
         _ = cancellationToken;
@@ -166,43 +198,6 @@ internal sealed class PrestoResponseBody : IDisposable
         }
 
         return null;
-    }
-
-    private static async Task<(Byte[] Buffer, Int32 Length)> ReadBytesAsync(HttpContent content, CancellationToken cancellationToken)
-    {
-        var length = content.Headers.ContentLength;
-        var capacity = length is > 0 and <= Int32.MaxValue ? (Int32)length.Value : 4096;
-        var buffer = ArrayPool<Byte>.Shared.Rent(capacity);
-        var total = 0;
-
-        try
-        {
-            using var stream = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-            using var gzip = OpenDecompression(content, stream);
-            var source = gzip != null ? gzip : stream;
-            while (true)
-            {
-                if (total == buffer.Length)
-                {
-                    var larger = ArrayPool<Byte>.Shared.Rent(buffer.Length * 2);
-                    Buffer.BlockCopy(buffer, 0, larger, 0, total);
-                    ArrayPool<Byte>.Shared.Return(buffer);
-                    buffer = larger;
-                }
-
-                var read = await source.ReadAsync(buffer.AsMemory(total), cancellationToken).ConfigureAwait(false);
-                if (read <= 0) break;
-
-                total += read;
-            }
-
-            return (buffer, total);
-        }
-        catch
-        {
-            ArrayPool<Byte>.Shared.Return(buffer);
-            throw;
-        }
     }
 #endif
     #endregion
